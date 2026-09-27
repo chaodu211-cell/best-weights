@@ -225,6 +225,23 @@ def patch(d, E, A, log=False):
         "ic_hist": [{"m": f"{t:%Y-%m}", "v": round(float(v), 3)} for t, v in icm.items()],
         "prereg": prereg(V, temp_alt, A, log),
     }
+    # —— 集中度状态提示（2026-09-28）：只作提示，不改红点；规则与来历见 alt_engine 的 CONC_* 注释 ——
+    conc = {}
+    for key, col, nm, reading in (("top2", "top2", "TOP2", adj["top2"]),
+                                  ("topshare", "_topshare", "前2%", parts["topshare"])):
+        if col not in rawdf.columns:
+            continue
+        up, lvl = A.conc_state(rawdf[col])
+        u, l, r = lastv(up), lastv(lvl), lastv(reading)
+        d["series"][f"conc_{key}_up"] = [num(v) for v in up.reindex(dates).values]
+        lab = A.conc_label(None if u is None else float(u), None if l is None else float(l),
+                           None if r is None else float(r))
+        conc[key] = {"factor": nm, "up": num(u), "lvl": num(l), "reading": num(r),
+                     "raw": num(lastv(rawdf[col]), 1),
+                     "state": lab["name"], "state_key": lab["key"], "msg": lab["msg"]}
+    d["validity"]["conc"] = {"items": conc, "up_hi": A.CONC_UP_HI, "up_lo": A.CONC_UP_LO,
+                             "lvl_hi": A.CONC_LVL_HI, "read_hi": A.CONC_READ_HI,
+                             "hist_from": f"{rawdf.index[0]:%Y-%m}"}
 
     d["alerts"]["counts"] = {k: int(sum(v)) for k, v in d["alerts"]["flags"].items()}
 
@@ -380,9 +397,12 @@ def main():
         pj = v["prereg"]["judge"]
         print(f"有效性：近 2 年触发 {v['rate_now']}%（设计 {v['design_rate']}%）  "
               f"自适应门槛 {v['th_ad_now']}（固定 {v['th_fixed']:g}）  "
-              f"滚动 IC {v['ic_now']}（{v['ic_month']} 月末，窗口止于 {v['ic_window_end']}）  "
+              f"滚动 IC {v['ic_now']}（按 {v['ic_month']}，样本止于 {v['ic_window_end']}）  "
               f"预先登记 自 {v['prereg']['from']}："
               + "；".join(f"{k} {j['n']} 次/{j['verdict']}" for k, j in pj.items()))
+        for c in (v.get("conc") or {}).get("items", {}).values():
+            print(f"集中度状态 {c['factor']}：{c['state']}（近一年 {c['up']}% 的日子高于年度中位数，"
+                  f"水平第 {c['lvl']} 分位，读数 {c['reading']}）")
     for k, fl in d["alerts"]["flags"].items():
         pos = np.where(np.array(fl))[0]
         if not len(pos):

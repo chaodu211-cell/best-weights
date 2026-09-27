@@ -279,6 +279,8 @@ table.ext .r{white-space:nowrap;font-size:12.5px}
       <p class="sub vcap" id="cap-vr"></p></div>
     <div class="chart-box" style="margin-top:8px"><svg id="cVI" role="img" aria-label="滚动 IC"></svg>
       <p class="sub vcap" id="cap-vi"></p></div>
+    <div class="chart-box" style="margin-top:8px"><svg id="cVC" role="img" aria-label="集中度上升占比"></svg>
+      <p class="sub vcap" id="cap-vc"></p></div>
     <h3 class="vh3">预先登记</h3>
     <p class="sub" id="prereg-sub"></p>
     <div class="vtabwrap" id="prereg"></div>
@@ -782,11 +784,16 @@ function drawValid(){
     [], z => z.toFixed(1) + "%");
   vChart("cVI", 120, -0.8, 0.4, [[S.red_ic, "#8FA6BD", 1.5]], [[0, "#D19A3E", "0：不含方向信息"]], [],
     z => z.toFixed(1));
+  if (VV.conc) vChart("cVC", 120, 0, 100, [[S.conc_top2_up, "#8FA6BD", 1.5], [S.conc_topshare_up, "#8FA6BD", 1, "4 3"]],
+    [[VV.conc.up_hi, "#D19A3E", `趋势上升 ${VV.conc.up_hi}%`], [VV.conc.up_lo, "#5FA86B", `回落 ${VV.conc.up_lo}%`, "2 3"]],
+    [], z => z.toFixed(0) + "%");
 }
 (function(){
   if (!VV) return;
   $("validsec").style.display = "";
   const P = VV.prereg, J = P.judge;
+  const CC = VV.conc || null, CI = CC ? CC.items : {};
+  const fz = (v, n) => v == null ? "--" : Number(v).toFixed(n || 0);
   const ratio = VV.rate_now == null ? null : VV.rate_now / VV.design_rate;
   const rateMsg = ratio == null ? "近 2 年数据不足" : ratio < 0.5 ? "明显低于设计：固定门槛可能正在「失声」，参考空心红点"
                 : ratio > 2 ? "明显高于设计：红点可能过于频繁" : "与设计相当";
@@ -796,7 +803,8 @@ function drawValid(){
     (j.p != null ? `（p = ${j.p.toFixed(3)}）` : ""); };
   $("valid-sub").innerHTML = `回答两件不同的事：<b>红点还适不适合当下这个时代</b>（近 2 年触发频率、滚动 IC，都是慢变量），
     以及<b>红点亮了之后准不准</b>（预先登记，只看起算日之后的新事件）。另加一种<b>自适应门槛</b>的空心红点与实心红点并列，
-    防止温度基数整体漂移后固定门槛整段失声。三张小图与上方纳指图同一时间轴。`;
+    防止温度基数整体漂移后固定门槛整段失声。<b>集中度状态</b>提示 TOP2、前2% 这两个滚动分位因子的读数该怎么解读
+    （集中度一路上升时读数容易长期偏高，高位走平时读数不高不代表不拥挤）。小图都与上方纳指图同一时间轴。`;
   $("vtiles").innerHTML = [
     ["近 2 年实际触发频率", VV.rate_now == null ? "--" : VV.rate_now.toFixed(2) + "%",
      `设计 ${VV.design_rate}%` + (ratio == null ? "" : ` · 实际/设计 ${ratio.toFixed(2)}`), rateMsg, ratio != null && (ratio < 0.5 || ratio > 2)],
@@ -807,7 +815,11 @@ function drawValid(){
      `每月更新（${VV.ic_month || "--"} 按当月最新一日）· 样本止于 ${VV.ic_window_end || "--"}`, icMsg, VV.ic_now != null && VV.ic_now > -0.1],
     ["预先登记", `${J["固定门槛"].n} / ${J["自适应门槛"].n}`, `实心 / 空心 · 自 ${P.from} 起`,
      jtxt("固定门槛") + "<br>" + jtxt("自适应门槛"), false]
-  ].map(([t, b, e1, e2, w]) => `<div class="vtile"><i>${t}</i><b>${b}</b><em>${e1}</em><em class="${w ? "warn" : ""}">${e2}</em></div>`).join("");
+  ].concat(CI.top2 ? [["集中度状态（TOP2）", CI.top2.state,
+     `近一年 ${fz(CI.top2.up)}% 的日子高于年度中位数 · 原始值 ${fz(CI.top2.raw, 1)}%` +
+     `（${CC.hist_from} 以来第 ${fz(CI.top2.lvl)} 分位）· 今日读数 ${fz(CI.top2.reading)}`,
+     CI.top2.msg + (CI.topshare ? `<br>前2%：${CI.topshare.state}（${fz(CI.topshare.up)}% · 第 ${fz(CI.topshare.lvl)} 分位 · 读数 ${fz(CI.topshare.reading)}）` : ""),
+     CI.top2.state_key !== "normal"]] : []).map(([t, b, e1, e2, w]) => `<div class="vtile"><i>${t}</i><b>${b}</b><em>${e1}</em><em class="${w ? "warn" : ""}">${e2}</em></div>`).join("");
   $("cap-vt").innerHTML = `红点温度（灰线）、固定门槛 ${VV.th_fixed}（红虚线）与自适应门槛（浅红点线）。
     实心点＝固定门槛红点，空心点＝只有自适应门槛成立的红点。自适应门槛要至少 ${VV.ad_minp / 252} 年温度才有读数。`;
   $("cap-vr").innerHTML = `近 ${VV.rate_win / 252} 年里固定门槛红点占交易日的比例；绿虚线＝设计值 ${VV.design_rate}%
@@ -816,6 +828,11 @@ function drawValid(){
   $("cap-vi").innerHTML = `红点温度与之后 ${VV.fwd} 个交易日 QQQ 收益的 Spearman 相关，${VV.ic_win} 日窗口，每月更新一次（当月按最新一日）；
     t 日只用到 t−${VV.fwd} 为止的样本。负值＝温度高之后跌。长面板上 2010-16 平均 −0.20、2018-26 平均 −0.30。
     它量的是整个分布（也包括"温度低之后涨"那一端），不等于顶部预警的质量；连续一两年贴近 0 或转正才值得警惕。`;
+  if (CC) $("cap-vc").innerHTML = `集中度的<b>上升占比</b>：近一年里原始值高于自己过去一年中位数的天数占比（实线 TOP2，虚线前2%）。
+    ≥ ${CC.up_hi}% 为<b>趋势上升期</b>（读数容易长期偏高），≤ ${CC.up_lo}% 为<b>回落期</b>；介于两者之间时，原始值在
+    ${CC.hist_from} 以来第 ${CC.lvl_hi} 分位以上算<b>高位走平期</b>，否则正常。今日读数 ≥ ${CC.read_hi} 算冒尖——
+    2020-02、2021-11 两个红点顶部都是"高位走平 + 冒尖"。只作提示，不改红点；
+    改读法的试验（去趋势再取分位）没有稳定改善，见 compare_conc.py。`;
   $("prereg-sub").innerHTML = `<b>标准（${P.from} 前定好，此后不改）</b>：以事件首日为单位（相隔 ${VV.fwd} 个交易日以内算同一次），
     看之后 ${VV.fwd} 个交易日 QQQ 收益。前瞻收益已可知的事件累计 ≥ ${P.min_events} 次后，把同样个数的日子随机放在起算日之后的交易日里
     抽 ${P.draws.toLocaleString()} 次，随机均值不高于实际均值的比例就是 p；<b>p &lt; ${P.p_cut} 判通过</b>，否则判未通过。

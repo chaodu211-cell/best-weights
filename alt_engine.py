@@ -108,6 +108,19 @@ IC_WIN = 252
 # 按事先定好的标准评判——这是唯一不受标定过拟合影响的检验。标准写在 说明.md。
 PREREG_FROM = "2026-09-25"
 PREREG_MIN_EVENTS, PREREG_P, PREREG_DRAWS, PREREG_SEED = 5, 0.10, 10000, 20260924
+
+# —— 集中度状态提示（2026-09-28 加，只作提示，不改红点）——
+# 担心的风险：TOP2、前2% 都是 252 日滚动分位，只和过去一年比——集中度一路上升时读数天天顶格，
+# 高读数不再只出现在顶部；在高位走平后读数回到 50 附近，绝对水平再高也显示"不热"。
+# 试过把读法改成"去趋势后再取分位"（compare_conc.py，2026-09-27）：没有稳定改善，T1 还丢了 2018-08；
+# AI 期集中度 ≥80 的日子之后 30 日仍比基准低 1.8pp（误报没有真的出现）；唯一沉默的 2025-02 顶是
+# 集中度真实下降（TOP2 57%→50%），任何读法都读 24~29。所以算法不改，改为把状态摆到页面上。
+# 状态只看原始值本身，门槛是描述性的，没有按收益调过：
+#   上升占比 = 近一年里原始值高于自己过去一年中位数的天数占比（≈ 读数 > 50 的天数占比）
+#   水平分位 = 当前原始值在全部可用历史里的分位（生产数据自 2016-09，约 10 年；至少 2 年才出数）
+CONC_UP_HI, CONC_UP_LO = 65.0, 35.0   # 上升占比 ≥65 → 趋势上升期；≤35 → 回落期
+CONC_LVL_HI = 80.0                    # 其余情况下水平分位 ≥80 → 高位走平期，否则正常
+CONC_READ_HI = 80.0                   # 当天读数 ≥80 算"冒尖"。2020-02、2021-11 两个红点顶部都是"高位走平 + 冒尖"
 # VIX 绝对刻度的锚点：10→最热(100)，20→中性(50)，40→最冷(0)。
 # 用固定锚点而不是滚动分位是实测结论；30 日口径下 VIX 是 12 个因子里秩相关最强的
 # 一个（-0.177），而 63 日口径下它几乎无用（-0.074）——它量的本来就是眼前的恐慌。
@@ -272,3 +285,33 @@ def prereg_judge(firsts, fwd):
         p = float((sims <= np.mean(got)).mean())
         res.update(p=p, verdict="通过" if p < PREREG_P else "未通过")
     return res
+
+
+def conc_state(raw):
+    """集中度原始值（TOP2 或前2%，单位 %）→ (上升占比 %, 水平分位)。只用当时已有的数据。"""
+    above = (raw > raw.rolling(252, min_periods=200).median()).astype(float).where(raw.notna())
+    up = above.rolling(252, min_periods=200).mean() * 100
+    lvl = E.expanding_pct(raw, min_periods=504)
+    return up, lvl
+
+
+def conc_label(up, lvl, reading):
+    """状态 + 当天读数 → {key, name, msg}。只作页面提示，文案里的数字由调用方填。"""
+    if up is None or not np.isfinite(up):
+        return {"key": "na", "name": "数据不足", "msg": "近一年数据不足，无法判断"}
+    hot = reading is not None and np.isfinite(reading) and reading >= CONC_READ_HI
+    if up >= CONC_UP_HI:
+        return {"key": "up", "name": "趋势上升期",
+                "msg": ("读数偏高，但近一年多数日子都在创新高，高读数有一部分是趋势带来的；"
+                        "单看它意义有限，要看其他因子是否同时变热" if hot else
+                        "集中度在上升通道里，眼下没有冒尖")}
+    if up <= CONC_UP_LO:
+        return {"key": "down", "name": "回落期",
+                "msg": ("集中度整体在下降，但眼下又冒尖" if hot else
+                        "集中度整体在下降，读数偏低多半是真实降温")}
+    if lvl is not None and np.isfinite(lvl) and lvl >= CONC_LVL_HI:
+        return {"key": "plateau", "name": "高位走平期",
+                "msg": ("原始值在历史高位、近一年没有明显趋势，眼下又冒尖——"
+                        "2020-02、2021-11 两个红点顶部都是这种形态" if hot else
+                        "原始值仍在历史高位，读数不高只是因为没比过去一年更高——不代表不拥挤")}
+    return {"key": "normal", "name": "正常", "msg": "没有明显趋势、也不在历史高位，读数可以直接看"}
