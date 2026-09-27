@@ -1,0 +1,193 @@
+name: daily
+
+# 最优拟合 · 替代权重版：每个美股交易日拉行情 → alt_refresh.py 重算 → 发布到 GitHub Pages。
+#
+# 分工：GitHub 负责算，Claude 负责推送。
+#   · 本工作流：北京时间 19:07 左右（周一至周五）跑完整条流水线，页面发布到
+#     https://chaodu211-cell.github.io/best-weights/ ，同目录下另有 status.json（截至日、抓取是否成功）。
+#   · Claude 的定时任务：北京时间 21:00 前后读取上面那个页面，更新 Artifact，
+#     出现红点 / 空心红点 / 蓝点、或任一分项连续 5 日 > 90 时推送到手机。
+#
+# raw/ 十年原始日线（约 42MB）不进 git，用 actions/cache 在两次运行之间保存。
+on:
+  schedule:
+    # 11:07 UTC = 北京 19:07 = 美东 07:07（夏令时）/ 06:07（冬令时），前一交易日收盘数据已齐。
+    # 比 21:00 的 Claude 任务早约两小时：GitHub 定时任务常晚 10~60 分钟，首次全量下载也要十几分钟。
+    # 分钟取 7 而不是 0：整点是全 GitHub 排队最严重的时刻。
+    # 周一这次拿到的是上周五的收盘，所以周一到周五五次运行正好覆盖每个交易日。
+    - cron: "7 11 * * 1-5"
+  # 代码一合进 main 就重建页面，改完引擎不用手动跑任何东西（只改文档不触发）
+  push:
+    branches: [main]
+    paths-ignore: ["**.md"]
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "全量重下十年历史（平时不需要；怀疑数据有问题时才勾）"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # 只用来提交 _红点预登记.csv（有新登记时）
+  pages: write
+  id-token: write
+
+concurrency:
+  group: daily
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # 与本地 Mac 同一时区：预先登记表的「登记时间」、各脚本里的“今天”都按北京时间算
+    env:
+      TZ: Asia/Shanghai
+    outputs:
+      built: ${{ steps.site.outputs.built }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 不开 cache: pip —— 仓库没有 requirements.txt，开了会直接报错
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 装依赖
+        run: pip install pandas numpy scipy
+
+      # 缓存 key 每次轮换（key 不可变，固定 key 会让缓存永远停在第一天），
+      # restore-keys 前缀回退到最近一次。旧缓存由 GitHub 按 LRU 自动清理。
+      - name: 取回 raw/ 缓存
+        uses: actions/cache/restore@v4
+        with:
+          path: raw
+          key: raw-alt-${{ github.run_id }}
+          restore-keys: |
+            raw-alt-
+
+      - name: 刷新数据并渲染
+        id: pipeline
+        continue-on-error: true    # 抓取失败不直接判死，下一步用缓存数据兜底
+        run: |
+          set -o pipefail
+          if [ "${{ inputs.full }}" = "true" ]; then MODE=""; else MODE="--fast"; fi
+          python3 alt_refresh.py $MODE 2>&1 | tee run.log
+
+      # 抓完立刻存缓存，不等作业结束——后面任何一步失败都不该把今天下好的数据丢掉
+      - name: 保存 raw/ 缓存
+        if: ${{ !cancelled() && hashFiles('raw/*.csv') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: raw
+          key: raw-alt-${{ github.run_id }}
+
+      # 抓取失败时的兜底：用缓存里已有的 raw/ 重算，至少让页面反映最新代码。
+      # engine.py 自带完整性闸门，输入不齐的最新交易日会被截掉，不会产出半成品读数。
+      - name: 抓取失败 — 用缓存数据兜底重建
+        if: steps.pipeline.outcome == 'failure'
+        run: |
+          echo "::warning::数据抓取失败，改用缓存的 raw/ 重新渲染。页面代码是最新的，但行情可能不是。"
+          if [ -z "$(ls -A raw 2>/dev/null)" ]; then
+            echo "::error::raw/ 缓存也是空的，无法渲染任何页面"
+            exit 1
+          fi
+          set -o pipefail
+          python3 make_alt_page.py 2>&1 | tee -a run.log
+
+      - name: 校验产物
+        run: |
+          python3 - <<'PY'
+          import io, json, sys
+          d = json.loads(io.open("data_alt.json", encoding="utf-8").read())
+          s = io.open("dashboard_alt.html", encoding="utf-8").read()
+          if "__DATA__" in s:
+              sys.exit("dashboard_alt.html 里 __DATA__ 占位符没被替换")
+          if len(s) < 100_000:
+              sys.exit(f"dashboard_alt.html 只有 {len(s)} 字节，疑似渲染失败")
+          n = len(d["series"]["dates"])
+          bad = [k for k, v in d["alerts"]["flags"].items() if len(v) != n]
+          if bad:
+              sys.exit(f"预警旗标长度与日期序列不一致：{bad}")
+          print(f"截至 {d['as_of']}  红点温度 {d.get('temperature_sell')}（门槛 {d.get('sell_threshold')}）"
+                f"  蓝点温度·当日 {d.get('temperature_fast')}")
+          PY
+
+      - name: 准备 Pages 目录
+        id: site
+        env:
+          FETCH_OK: ${{ steps.pipeline.outcome == 'success' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          mkdir -p _site
+          cp dashboard_alt.html _site/index.html
+          # status.json 给 Claude 的定时任务用：分得清「休市没新数据」和「今天抓取失败」
+          python3 - <<'PY'
+          import json, os
+          d = json.load(open("data_alt.json", encoding="utf-8"))
+          st = {"as_of": d["as_of"], "generated_at": d.get("generated_at"),
+                "fetch_ok": os.environ["FETCH_OK"] == "true",
+                "run_url": os.environ["RUN_URL"], "event": os.environ.get("GITHUB_EVENT_NAME"),
+                "sha": os.environ.get("GITHUB_SHA")}
+          json.dump(st, open("_site/status.json", "w", encoding="utf-8"), ensure_ascii=False)
+          print(st)
+          PY
+          echo "built=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      # 预先登记表「只追加、不改写」，必须跨运行保存，否则每次都会被当成第一次登记。
+      # 只在有新登记时才提交（红点事件很少，一年几次）。推送失败会让本次运行标红——
+      # 不再像另一个仓库那样静默吞掉失败；页面发布不受影响（deploy 不依赖这一步）。
+      - name: 保存预先登记表
+        run: |
+          F="_红点预登记.csv"
+          [ -f "$F" ] || { echo "没有 $F，跳过"; exit 0; }
+          git add -- "$F"
+          if git diff --cached --quiet; then
+            echo "预先登记表无新增"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "预先登记：新增红点事件（$(date +%F)）"
+          for i in 1 2 3; do
+            if git pull --rebase --quiet origin main && git push origin HEAD:main; then
+              echo "已提交 $F"
+              exit 0
+            fi
+            git rebase --abort 2>/dev/null || true
+            echo "推送失败，重试 $i"
+            sleep $((i * 5))
+          done
+          echo "::error::$F 推送失败：新登记只存在于本次运行里，下次运行会重新登记（登记时间会变）。"
+          exit 1
+
+      - name: 运行摘要
+        if: always()
+        run: |
+          {
+            echo "## 最优拟合 · 每日刷新"
+            echo
+            if [ "${{ steps.pipeline.outcome }}" = "failure" ]; then
+              echo "> ⚠️ **数据抓取失败**，页面用缓存的 raw/ 重建，行情可能不是最新的。"
+              echo
+            fi
+            echo '```'
+            tail -40 run.log 2>/dev/null || echo "（没有日志：流水线在产出任何输出之前就失败了）"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: refresh
+    # 只要页面产物传上去了就发布，哪怕后面「保存预先登记表」失败
+    if: ${{ !cancelled() && needs.refresh.outputs.built == 'true' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
