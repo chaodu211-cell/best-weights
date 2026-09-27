@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SOXX · 红点蓝点（替代权重版）</title>
+<title>纳斯达克 · 红点蓝点（替代权重版）</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap">
@@ -67,6 +67,19 @@ svg{display:block}
 .mk.box{border-radius:2px;border:2px solid}
 .mk.line{width:17px;height:3px;border-radius:2px}
 .mk.hollow{background:none;border:2px solid}
+.vtiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-top:12px}
+.vtile{border:1px solid var(--border);border-radius:4px;background:var(--surface);padding:12px 14px}
+.vtile i{display:block;font-style:normal;font-size:11.5px;color:var(--ink3)}
+.vtile b{display:block;font-family:var(--mono);font-size:22px;font-weight:500;margin:4px 0 3px;color:var(--ink)}
+.vtile em{display:block;font-style:normal;font-size:11.5px;color:var(--ink2);line-height:1.55}
+.vtile em.warn{color:#D19A3E}
+.vcap{margin:6px 0 0;font-size:11px}
+.vh3{font-size:14px;font-weight:500;margin:20px 0 4px}
+.vtab{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+.vtab th,.vtab td{border-bottom:1px solid var(--border);padding:6px 8px;text-align:left;white-space:nowrap}
+.vtab th{color:var(--ink3);font-weight:400}
+.vtab td{font-family:var(--mono);color:var(--ink2)}
+.vtabwrap{overflow-x:auto}
 .legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:12px;padding:0 4px}
 .legend span{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ink2);font-family:var(--mono)}
 .sw{width:10px;height:10px;border-radius:2px;flex:none}
@@ -83,6 +96,17 @@ svg{display:block}
 .r-nm em{display:block;font-style:normal;font-size:11.5px;color:var(--ink3);margin-top:2px}
 .r-rw{font-family:var(--mono);font-size:13px;color:var(--ink2);font-variant-numeric:tabular-nums}
 .r-rw u{display:block;text-decoration:none;font-size:10.5px;color:var(--ink3);letter-spacing:.03em}
+.pickday{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 12px;
+  font-family:var(--mono);font-size:12px;color:var(--ink2)}
+.pickday input[type=date]{font-family:var(--mono);font-size:12px;color:var(--ink);color-scheme:dark;
+  background:var(--surface2);border:1px solid var(--border-2);border-radius:3px;padding:4px 8px}
+.pickday input[type=date]:focus-visible{outline:2px solid var(--ink2);outline-offset:1px}
+.pickday button{font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;color:var(--ink2);
+  background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:5px 12px;cursor:pointer}
+.pickday button:hover{color:var(--ink);border-color:var(--border-2)}
+.pickday button:disabled{opacity:.4;cursor:default}
+.pickday #pday-note{color:var(--ink3);font-size:11.5px}
+.pickday #pday-note b{color:var(--ink);font-weight:500}
 .pbar{position:relative;height:8px;background:var(--surface2);border-radius:2px;overflow:hidden}
 .pbar i{position:absolute;left:0;top:0;bottom:0;border-radius:2px}
 .pticks{position:relative;height:12px;margin-top:4px}
@@ -228,7 +252,36 @@ table.ext .r{white-space:nowrap;font-size:12.5px}
         只看水位会把 2020-03 疫情底判反。
         此状态内的蓝点画成空心。</p>
     </div>
+    <div id="tdcbox" class="chart-box" style="display:none;margin-top:8px">
+      <svg id="cTDC" role="img" aria-label="趋势下跌确认分 TDC"></svg>
+      <p class="sub" style="margin:6px 0 0;font-size:11px">
+        <b>TDC · 趋势下跌确认分</b>（0~100）。三条腿等权：<b>内部损伤</b>（成分股站上MA200比例、
+        创52周新低比例、已跌入熊市的成分股比例）、<b>波动中枢</b>（20日已实现波动、20日内跌1%以上
+        的天数、VIX的20日最低值）、<b>趋势结构</b>（距MA200偏离、120日动量、MA50−MA200）。
+        每个因子先做 1260 日滚动分位，所以 TDC 本身<b>不是分位数</b>——70 这条线落在它自己历史的
+        第 77 分位，占全部交易日的 22.7%。
+        <span style="color:#E8C24A">■</span> 黄点＝趋势下跌预警：纳指距 52 周高点回落 6%~13% 且 TDC 过 70 连续 3 日，
+        <b>一轮下跌只报一次</b>，报完要等 TDC 跌回 60（绿虚线）以下才重新武装；
+        确认时纳指已跌破 13% 则本轮作废（报晚了，多半在底部）。
+        它<b>不预告顶部</b>：2018/2020/2022/2025/2026 五次大跌的顶部当天 TDC 是 32/29/45/46/43。
+        代价与反面证据见「趋势下跌确认.md」。</p>
+    </div>
     <div id="alegend" class="alegend"></div>
+  </section>
+
+  <section id="validsec" style="display:none">
+    <h2>红点有效性</h2>
+    <p class="sub" id="valid-sub"></p>
+    <div class="vtiles" id="vtiles"></div>
+    <div class="chart-box" style="margin-top:12px"><svg id="cVT" role="img" aria-label="红点温度与固定、自适应两条门槛"></svg>
+      <p class="sub vcap" id="cap-vt"></p></div>
+    <div class="chart-box" style="margin-top:8px"><svg id="cVR" role="img" aria-label="近两年红点实际触发频率"></svg>
+      <p class="sub vcap" id="cap-vr"></p></div>
+    <div class="chart-box" style="margin-top:8px"><svg id="cVI" role="img" aria-label="滚动 IC"></svg>
+      <p class="sub vcap" id="cap-vi"></p></div>
+    <h3 class="vh3">预先登记</h3>
+    <p class="sub" id="prereg-sub"></p>
+    <div class="vtabwrap" id="prereg"></div>
   </section>
 
   <section>
@@ -236,7 +289,14 @@ table.ext .r{white-space:nowrap;font-size:12.5px}
     <p class="sub">每项取过去 252 个交易日的滚动分位，分位越高＝该维度越"热"。迷你图是该项分位的历史走势，中线为 50 分位。
     右侧标注该项进入哪个温度<b>以及占多少权重</b>：<b>红点</b>＝页面顶部那个数（五项加权，合计 100%）、
     <b>蓝点</b>＝页头并列的那个数（四项加权，合计 100%）、<b>蓝点闸门</b>＝不进任何温度，只作为蓝点的必要条件。
-    表里列出的就是全部参与计算的因子——权重为 0 的项已经不在这里。</p>
+    表里列出的就是全部参与计算的因子——权重为 0 的项已经不在这里。
+    输入日期可查看<b>当天</b>每个因子的原始值与分位；选定日期后，迷你图上的竖线和圆点标出那一天。</p>
+    <div class="pickday">
+      <label for="pday">查看某一天</label>
+      <input type="date" id="pday">
+      <button type="button" id="pday-latest">回到最新</button>
+      <span id="pday-note" aria-live="polite"></span>
+    </div>
     <div class="rows" id="rows"></div>
   </section>
 
@@ -525,9 +585,9 @@ function drawNdx(){
   // narrow（橙线）与 hot_bear（空心红点）已停用，引擎不再下发这两个 key；
   // flag()/rule() 对缺失 key 返回 []/undefined，每处都有守卫，所以直接不取即可。
   const fc = flag("crowd"), fh = flag("hot"), fl = flag("cold"), fn = flag("narrow"),
-        fls = flag("cold_soft");
+        fls = flag("cold_soft"), ft = flag("tdc"), fha = flag("hot_ad");
   const rc = rule("crowd"), rh = rule("hot"), rlo = rule("cold"), rn = rule("narrow"),
-        rls = rule("cold_soft");
+        rls = rule("cold_soft"), rt = rule("tdc"), rha = rule("hot_ad");
   const s = N2 > 1200 ? 7 : 9;
   // 上涨拥挤度：不打点，直接把这段指数走势线本身染成橙色——它是持续多日的形态，
   // 用线段比用标记更贴切。
@@ -565,10 +625,16 @@ function drawNdx(){
     svg.appendChild(el("circle", {cx:x(i), cy:y(sp[i]), r:r+.6, fill:"#0A0E14",
       stroke:ru.color, "stroke-width":1.7, opacity:.95})); }); };
   hollow(fls, rls);
+  hollow(fha, rha);          // 自适应门槛红点：空心；与固定门槛同时成立时被下面的实心盖住
   if (rh) fh.forEach((on,i) => { if (on && sp[i] != null)
     svg.appendChild(el("circle", {cx:x(i), cy:y(sp[i]), r:r, fill:rh.color, opacity:.95})); });
   if (rlo) fl.forEach((on,i) => { if (on && sp[i] != null)
     svg.appendChild(el("circle", {cx:x(i), cy:y(sp[i]), r:r, fill:rlo.color, opacity:.95})); });
+  // 趋势下跌预警（黄点）：一轮下跌只有一个，画得比红蓝点大一圈并加深色描边，
+  // 不然在密集的红点里根本找不到它。
+  if (rt) ft.forEach((on,i) => { if (on && sp[i] != null) {
+    svg.appendChild(el("circle", {cx:x(i), cy:y(sp[i]), r:r+1.4, fill:rt.color,
+      stroke:"#05080C", "stroke-width":1.2, opacity:1})); } });
 
   // hover
   const cross = el("line", {x1:0, x2:0, y1:m.t, y2:m.t+ih, stroke:"#8DA2B8",
@@ -585,8 +651,8 @@ function drawNdx(){
     hov.setAttribute("cx", x(i)); hov.setAttribute("cy", y(sp[i])); hov.setAttribute("opacity", 1);
     if (rrLink) rrLink.show(i);          // 虚线延伸到下方的实际利率图并显示两条分位
     const rg = regOf(Sl[i]);
-    const hit = [fh[i] && rh, fl[i] && rlo, fls[i] && rls,
-                 fc[i] && rc, fn[i] && rn].filter(Boolean);
+    const hit = [fh[i] && rh, fha[i] && rha, fl[i] && rlo, fls[i] && rls,
+                 fc[i] && rc, fn[i] && rn, ft[i] && rt].filter(Boolean);
     const vx = D.series.vix ? D.series.vix[A + i] : null;
     tip.innerHTML = `<span style="color:#8DA2B8">${D2[i]}</span><br>` +
       `QQQ ${sp[i].toFixed(2)}` + (vx != null ? `　VIX ${vx.toFixed(1)}` : "") + `<br>` +
@@ -610,6 +676,157 @@ function drawNdx(){
     if (rrLink) rrLink.clear();
   });
 }
+
+/* TDC 条：与纳指图同一时间轴。0~100 固定刻度——它是分数不是价格，随窗口缩放会骗人。 */
+function drawTDC(){
+  const V = D.series.tdc, AL2 = (D.alerts && D.alerts.flags && D.alerts.flags.tdc) || null;
+  const box = $("tdcbox"), svg = $("cTDC");
+  if (!V) { box.style.display = "none"; return; }
+  box.style.display = "";
+  svg.innerHTML = "";
+  const A = RSTART, Bx = REND + 1, v = V.slice(A, Bx), D2 = D.series.dates.slice(A, Bx), N2 = v.length;
+  const h = 118, m = {t:12, r:14, b:22, l:52};
+  svg.setAttribute("viewBox", `0 0 ${W} ${h}`);
+  svg.setAttribute("width", "100%"); svg.style.minWidth = "560px"; svg.style.height = "auto";
+  const iw = W - m.l - m.r, ih = h - m.t - m.b;
+  if (!v.some(z => z != null)) { box.style.display = "none"; return; }
+  const x = i => m.l + (N2 === 1 ? iw/2 : i / (N2 - 1) * iw);
+  const y = z => m.t + (1 - z/100) * ih;
+  // 门槛线 70（黄）与重新武装线 60（绿），另加 0/50/100 的刻度
+  [[0,"#2A3B4F",""],[50,"#2A3B4F","4 3"],[100,"#2A3B4F",""]].forEach(([z,c,da]) => {
+    svg.appendChild(el("line", {x1:m.l, x2:m.l+iw, y1:y(z), y2:y(z), stroke:c,
+      "stroke-width":.6, "stroke-dasharray":da, opacity:.6}));
+    const t = el("text", {x:m.l-7, y:y(z)+3.5, "text-anchor":"end", fill:"#56687D",
+      "font-size":10, "font-family":"IBM Plex Mono, monospace"});
+    t.textContent = z; svg.appendChild(t);
+  });
+  [[70,"#E8C24A","报警 70"],[60,"#5FA86B","武装 60"]].forEach(([z,c,lab]) => {
+    svg.appendChild(el("line", {x1:m.l, x2:m.l+iw, y1:y(z), y2:y(z), stroke:c,
+      "stroke-width":1, "stroke-dasharray":"5 4", opacity:.75}));
+    const t = el("text", {x:m.l+iw, y:y(z)-3, "text-anchor":"end", fill:c,
+      "font-size":9.5, "font-family":"IBM Plex Mono, monospace", opacity:.9});
+    t.textContent = lab; svg.appendChild(t);
+  });
+  const longSpan = N2 > 400;
+  axisDates(D2, longSpan ? 9 : 7).forEach((i,k,arr) => {
+    const t = el("text", {x:x(i), y:h-6,
+      "text-anchor": k === 0 ? "start" : k === arr.length-1 ? "end" : "middle",
+      fill:"#56687D", "font-size":10, "font-family":"IBM Plex Mono, monospace"});
+    t.textContent = longSpan ? D2[i].slice(0,7) : fmtDate(D2[i]); svg.appendChild(t);
+  });
+  svg.appendChild(el("polyline", {points: v.map((z,i) => z == null ? null :
+      `${x(i).toFixed(2)},${y(z).toFixed(2)}`).filter(Boolean).join(" "),
+    fill:"none", stroke:"#8FA6BD", "stroke-width": N2 > 1200 ? 1.1 : 1.6, "stroke-linejoin":"round"}));
+  if (AL2) AL2.slice(A, Bx).forEach((on,i) => { if (on && v[i] != null)
+    svg.appendChild(el("circle", {cx:x(i), cy:y(v[i]), r: N2 > 1200 ? 3.2 : 4.2,
+      fill:"#E8C24A", stroke:"#05080C", "stroke-width":1.2})); });
+}
+
+/* 红点有效性：三张与纳指图同轴的小图 + 数字卡片 + 预先登记表（2026-09-24） */
+const VV = D.validity || null;
+function vChart(id, h, lo, hi, lines, refs, dots, yfmt){
+  const svg = $(id); if (!svg) return;
+  svg.innerHTML = "";
+  const A = RSTART, Bx = REND + 1, D2 = D.series.dates.slice(A, Bx), N2 = D2.length;
+  const m = {t:12, r:14, b:22, l:52}, iw = W - m.l - m.r, ih = h - m.t - m.b;
+  svg.setAttribute("viewBox", `0 0 ${W} ${h}`);
+  svg.setAttribute("width", "100%"); svg.style.minWidth = "560px"; svg.style.height = "auto";
+  const x = i => m.l + (N2 === 1 ? iw/2 : i / (N2 - 1) * iw);
+  const y = z => m.t + (1 - (Math.min(hi, Math.max(lo, z)) - lo) / (hi - lo)) * ih;
+  const ticks = [lo, (lo + hi) / 2, hi];
+  ticks.forEach(z => {
+    svg.appendChild(el("line", {x1:m.l, x2:m.l+iw, y1:y(z), y2:y(z), stroke:"#2A3B4F", "stroke-width":.6, opacity:.6}));
+    const t = el("text", {x:m.l-7, y:y(z)+3.5, "text-anchor":"end", fill:"#56687D", "font-size":10,
+      "font-family":"IBM Plex Mono, monospace"}); t.textContent = yfmt(z); svg.appendChild(t);
+  });
+  refs.forEach(([z, c, lab, da]) => {
+    svg.appendChild(el("line", {x1:m.l, x2:m.l+iw, y1:y(z), y2:y(z), stroke:c, "stroke-width":1,
+      "stroke-dasharray":da || "5 4", opacity:.8}));
+    const t = el("text", {x:m.l+iw, y:y(z)-3, "text-anchor":"end", fill:c, "font-size":9.5,
+      "font-family":"IBM Plex Mono, monospace", opacity:.95}); t.textContent = lab; svg.appendChild(t);
+  });
+  const longSpan = N2 > 400;
+  axisDates(D2, longSpan ? 9 : 7).forEach((i,k,arr) => {
+    const t = el("text", {x:x(i), y:h-6, "text-anchor": k === 0 ? "start" : k === arr.length-1 ? "end" : "middle",
+      fill:"#56687D", "font-size":10, "font-family":"IBM Plex Mono, monospace"});
+    t.textContent = longSpan ? D2[i].slice(0,7) : fmtDate(D2[i]); svg.appendChild(t);
+  });
+  lines.forEach(([V, c, w, da]) => {
+    if (!V) return;
+    const v = V.slice(A, Bx);
+    // 缺值处断开，不把两段硬连起来
+    let seg = [];
+    const flush = () => { if (seg.length > 1) svg.appendChild(el("polyline", {points:seg.join(" "), fill:"none",
+      stroke:c, "stroke-width":w, "stroke-dasharray":da || "", "stroke-linejoin":"round"})); seg = []; };
+    v.forEach((z,i) => { if (z == null) flush(); else seg.push(`${x(i).toFixed(2)},${y(z).toFixed(2)}`); });
+    flush();
+  });
+  (dots || []).forEach(([V, F, c, hollow]) => {
+    if (!V || !F) return;
+    const v = V.slice(A, Bx), f = F.slice(A, Bx), r = N2 > 1200 ? 2.2 : 3;
+    f.forEach((on,i) => { if (on && v[i] != null) svg.appendChild(el("circle", {cx:x(i), cy:y(v[i]), r:hollow ? r+.6 : r,
+      fill:hollow ? "#0A0E14" : c, stroke:c, "stroke-width":hollow ? 1.6 : 0})); });
+  });
+}
+function drawValid(){
+  if (!VV) return;
+  const S = D.series, fl = D.alerts.flags, red = "#CE5A4E";
+  const onlyAd = (fl.hot_ad || []).map((v,i) => v && !(fl.hot || [])[i]);
+  vChart("cVT", 150, 0, 100, [[S.temperature_sell, "#8FA6BD", N > 1200 ? 1 : 1.3],
+                               [S.th_adaptive, "#E8A09A", 1.3, "2 3"]],
+    [[VV.th_fixed, red, `固定门槛 ${VV.th_fixed}`]],
+    [[S.temperature_sell, onlyAd, red, true], [S.temperature_sell, fl.hot, red, false]], z => z.toFixed(0));
+  const rv = (S.red_rate_2y || []).filter(z => z != null), rmax = Math.max(VV.design_rate * 2.5, ...rv, 1);
+  vChart("cVR", 120, 0, Math.ceil(rmax), [[S.red_rate_2y, "#8FA6BD", 1.5]],
+    [[VV.design_rate, "#5FA86B", `设计 ${VV.design_rate}%`], [VV.design_rate / 2, "#D19A3E", "设计的一半", "2 3"]],
+    [], z => z.toFixed(1) + "%");
+  vChart("cVI", 120, -0.8, 0.4, [[S.red_ic, "#8FA6BD", 1.5]], [[0, "#D19A3E", "0：不含方向信息"]], [],
+    z => z.toFixed(1));
+}
+(function(){
+  if (!VV) return;
+  $("validsec").style.display = "";
+  const P = VV.prereg, J = P.judge;
+  const ratio = VV.rate_now == null ? null : VV.rate_now / VV.design_rate;
+  const rateMsg = ratio == null ? "近 2 年数据不足" : ratio < 0.5 ? "明显低于设计：固定门槛可能正在「失声」，参考空心红点"
+                : ratio > 2 ? "明显高于设计：红点可能过于频繁" : "与设计相当";
+  const icMsg = VV.ic_now == null ? "数据不足" : VV.ic_now >= 0 ? "≥ 0：温度眼下不含「高了之后跌」的信息"
+              : VV.ic_now > -0.1 ? "接近 0：信息偏弱" : "为负：温度高之后倾向于跌";
+  const jtxt = k => { const j = J[k]; return `${k} ${j.n_known}/${j.need} · ${j.verdict}` +
+    (j.p != null ? `（p = ${j.p.toFixed(3)}）` : ""); };
+  $("valid-sub").innerHTML = `回答两件不同的事：<b>红点还适不适合当下这个时代</b>（近 2 年触发频率、滚动 IC，都是慢变量），
+    以及<b>红点亮了之后准不准</b>（预先登记，只看起算日之后的新事件）。另加一种<b>自适应门槛</b>的空心红点与实心红点并列，
+    防止温度基数整体漂移后固定门槛整段失声。三张小图与上方纳指图同一时间轴。`;
+  $("vtiles").innerHTML = [
+    ["近 2 年实际触发频率", VV.rate_now == null ? "--" : VV.rate_now.toFixed(2) + "%",
+     `设计 ${VV.design_rate}%` + (ratio == null ? "" : ` · 实际/设计 ${ratio.toFixed(2)}`), rateMsg, ratio != null && (ratio < 0.5 || ratio > 2)],
+    ["自适应门槛（空心红点）", VV.th_ad_now == null ? "--" : VV.th_ad_now.toFixed(1),
+     `固定门槛 ${VV.th_fixed}` + (VV.th_ad_now == null ? "" : ` · 差 ${(VV.th_ad_now - VV.th_fixed).toFixed(1)}`),
+     `前一日及以前 ${VV.ad_win / 252} 年连 3 日温度的同频分位`, false],
+    ["滚动 IC（温度 vs 后 30 日）", VV.ic_now == null ? "--" : VV.ic_now.toFixed(3),
+     `每月更新（${VV.ic_month || "--"} 按当月最新一日）· 样本止于 ${VV.ic_window_end || "--"}`, icMsg, VV.ic_now != null && VV.ic_now > -0.1],
+    ["预先登记", `${J["固定门槛"].n} / ${J["自适应门槛"].n}`, `实心 / 空心 · 自 ${P.from} 起`,
+     jtxt("固定门槛") + "<br>" + jtxt("自适应门槛"), false]
+  ].map(([t, b, e1, e2, w]) => `<div class="vtile"><i>${t}</i><b>${b}</b><em>${e1}</em><em class="${w ? "warn" : ""}">${e2}</em></div>`).join("");
+  $("cap-vt").innerHTML = `红点温度（灰线）、固定门槛 ${VV.th_fixed}（红虚线）与自适应门槛（浅红点线）。
+    实心点＝固定门槛红点，空心点＝只有自适应门槛成立的红点。自适应门槛要至少 ${VV.ad_minp / 252} 年温度才有读数。`;
+  $("cap-vr").innerHTML = `近 ${VV.rate_win / 252} 年里固定门槛红点占交易日的比例；绿虚线＝设计值 ${VV.design_rate}%
+    （标定窗口里的实际频率），橙虚线＝设计的一半。长期低于橙线＝红点在这个时代基本亮不了（2007-2016 长面板上就是这样）；
+    单看一两个月的起落没有意义——它不预测近期会不会亮。`;
+  $("cap-vi").innerHTML = `红点温度与之后 ${VV.fwd} 个交易日 QQQ 收益的 Spearman 相关，${VV.ic_win} 日窗口，每月更新一次（当月按最新一日）；
+    t 日只用到 t−${VV.fwd} 为止的样本。负值＝温度高之后跌。长面板上 2010-16 平均 −0.20、2018-26 平均 −0.30。
+    它量的是整个分布（也包括"温度低之后涨"那一端），不等于顶部预警的质量；连续一两年贴近 0 或转正才值得警惕。`;
+  $("prereg-sub").innerHTML = `<b>标准（${P.from} 前定好，此后不改）</b>：以事件首日为单位（相隔 ${VV.fwd} 个交易日以内算同一次），
+    看之后 ${VV.fwd} 个交易日 QQQ 收益。前瞻收益已可知的事件累计 ≥ ${P.min_events} 次后，把同样个数的日子随机放在起算日之后的交易日里
+    抽 ${P.draws.toLocaleString()} 次，随机均值不高于实际均值的比例就是 p；<b>p &lt; ${P.p_cut} 判通过</b>，否则判未通过。
+    实心、空心两类分开评判。登记表 <code>_红点预登记.csv</code> 只追加、不改写。`;
+  const R2 = P.rows;
+  $("prereg").innerHTML = R2.length ? `<table class="vtab"><tr><th>信号</th><th>首日</th><th>温度</th><th>门槛</th>
+      <th>后 ${VV.fwd} 日</th><th>登记时间</th></tr>` +
+    R2.map(r => `<tr><td>${r.sig}</td><td>${r.date}</td><td>${r.temp.toFixed(1)}</td><td>${r.th.toFixed(1)}</td>
+      <td>${r.fwd == null ? "未满 " + VV.fwd + " 日" : (r.fwd > 0 ? "+" : "") + r.fwd.toFixed(2) + "%"}</td><td>${r.logged}</td></tr>`).join("") +
+    `</table>` : `<p class="sub" style="margin:6px 0 0">起算日 ${P.from} 之后还没有新的红点事件。</p>`;
+})();
 
 /* 实际利率条：与纳指图同一时间轴，橙色底纹标出实际利率重估期 */
 function drawRR(){
@@ -760,21 +977,26 @@ if ($("legend")) $("legend").innerHTML = R.map((r, i) =>
 ).join("");
 
 /* ---- indicator rows ---- */
-function spark(raw, hex){
-  const w = 150, h = 26;
-  const step = Math.max(1, Math.ceil(raw.length / 160));
-  const series = raw.filter((_, i) => i % step === 0 || i === raw.length - 1);
-  const v = series.filter(x => x != null);
-  if (!v.length) return "";
-  const n = series.length;
-  const px = i => i / (n - 1) * w;
+/* at：可选，原序列里的下标——标出"查看某一天"选中的那天（竖线＋圆点）；不传则标最后一天。
+   横坐标一律按原序列下标算，抽稀只影响画几个点，不影响位置，标记才能和折线对得上。 */
+function spark(raw, hex, at){
+  const w = 150, h = 26, N = raw.length;
+  if (!N) return "";
+  const step = Math.max(1, Math.ceil(N / 160));
+  const keep = raw.map((_, i) => i).filter(i => i % step === 0 || i === N - 1);
+  if (!keep.some(i => raw[i] != null)) return "";
+  const px = i => N === 1 ? w / 2 : i / (N - 1) * w;
   const py = x => h - 2 - (x / 100) * (h - 4);
-  const pts = series.map((x,i) => x == null ? null : `${px(i).toFixed(1)},${py(x).toFixed(1)}`).filter(Boolean).join(" ");
-  const last = series[n-1];
+  const pts = keep.map(i => raw[i] == null ? null : `${px(i).toFixed(1)},${py(raw[i]).toFixed(1)}`)
+                  .filter(Boolean).join(" ");
+  const k = at == null ? N - 1 : Math.max(0, Math.min(N - 1, at));
+  const mark = (at == null ? "" :
+      `<line x1="${px(k).toFixed(1)}" x2="${px(k).toFixed(1)}" y1="0" y2="${h}" stroke="#E3EAF2" stroke-width=".8" opacity=".55"/>`)
+    + (raw[k] == null ? "" : `<circle cx="${px(k).toFixed(1)}" cy="${py(raw[k]).toFixed(1)}" r="2.6" fill="${hex}"/>`);
   return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="overflow:visible" aria-hidden="true">
     <line x1="0" x2="${w}" y1="${py(50)}" y2="${py(50)}" stroke="#2A3B4F" stroke-width=".6" opacity=".7"/>
     <polyline points="${pts}" fill="none" stroke="${hex}" stroke-width="1.4" stroke-linejoin="round"/>
-    <circle cx="${px(n-1)}" cy="${py(last)}" r="2.6" fill="${hex}"/></svg>`;
+    ${mark}</svg>`;
 }
 const median = a => { const s = a.filter(x => x != null).slice().sort((p,q) => p-q);
   return s.length ? s[Math.floor(s.length/2)] : null; };
@@ -802,21 +1024,65 @@ function rawSub(it){
   return `${it.smooth}${today ? `　当日 ${today}` : ""}`;
 }
 const PANEL = D.panel || null;
-if (PANEL){
+const PDATES = D.series.dates, PLAST = PDATES.length - 1;
+/* 分项面板。at = D.series.dates 的下标；null 或最后一天 = 最新（直接用引擎下发的 value/pct，
+   与页头一致）；其它日子从逐日序列里取——原始值是引擎格式化好的字符串，页面不再重算。 */
+function renderPanel(at){
+  const latest = at == null || at === PLAST;
+  const pick = (a, i) => (a && a[i] != null) ? a[i] : null;
   $("rows").innerHTML = PANEL.map(it => {
-    const r = regOf(it.pct == null ? 50 : it.pct);
+    const s = it.series || [];
+    const pct = latest ? it.pct : pick(s, at);
+    const val = latest ? it.value : (pick(it.raw_series, at) || "—");
+    const r = regOf(pct == null ? 50 : pct);
     return `<div class="row">
       <div class="r-nm"><b>${it.name}</b><em>${it.desc}</em></div>
-      <div class="r-rw">${it.value}<u>${it.sub}</u></div>
+      <div class="r-rw">${val}<u>${it.sub}</u></div>
       <div class="r-bar">
-        <div class="pbar"><i style="width:${it.pct || 0}%;background:${r.hex}"></i></div>
+        <div class="pbar"><i style="width:${pct || 0}%;background:${r.hex}"></i></div>
         <div class="pticks">${[20,40,60,80].map(t => `<u style="left:${t}%"></u>`).join("")}</div>
-        <div style="margin-top:6px">${spark(it.series || [], r.hex)}</div>
+        <div style="margin-top:6px">${spark(s, r.hex, latest ? null : at)}</div>
       </div>
-      <div class="r-pc" style="color:${r.hex}">${it.pct == null ? "—" : it.pct.toFixed(0)}<s>分位 · ${it.tag}</s></div>
+      <div class="r-pc" style="color:${r.hex}">${pct == null ? "—" : pct.toFixed(0)}<s>分位 · ${it.tag}</s></div>
     </div>`;
   }).join("");
+}
+
+/* ---- 查看某一天：输入日期 → 取不晚于它的最后一个交易日 ---- */
+const WEEK = "日一二三四五六";
+function dayIndex(str){
+  if (!str || str >= PDATES[PLAST]) return PLAST;
+  if (str <= PDATES[0]) return 0;
+  let lo = 0, hi = PLAST;                      // 日期是 YYYY-MM-DD，字符串比较即时间比较
+  while (lo < hi){ const mid = (lo + hi + 1) >> 1; if (PDATES[mid] <= str) lo = mid; else hi = mid - 1; }
+  return lo;
+}
+function showDay(str){
+  const i = dayIndex(str), d = PDATES[i];
+  renderPanel(i);
+  const bits = [];
+  if (str && str > PDATES[PLAST]) bits.push(`晚于最新数据，显示最新一天`);
+  else if (str && str < PDATES[0]) bits.push(`早于数据起点，显示第一天`);
+  else if (str && str !== d) bits.push(`${str} 不是交易日，显示前一个交易日`);
+  const wd = WEEK[new Date(d + "T00:00:00").getDay()];
+  const num = (a, dp) => (a && a[i] != null) ? a[i].toFixed(dp) : "—";
+  bits.push(`<b>${d}</b>（周${wd}）`
+    + `　红点温度 <b>${num(D.series.temperature_sell, 1)}</b>`
+    + `　蓝点温度·当日口径 <b>${num(D.series.temperature_fast, 1)}</b>`
+    + (D.series.tdc ? `　TDC <b>${num(D.series.tdc, 0)}</b>` : ""));
+  $("pday-note").innerHTML = bits.join("　·　");
+  $("pday").value = d;
+  $("pday-latest").disabled = (i === PLAST);
+}
+
+if (PANEL){
+  const inp = $("pday");
+  inp.min = PDATES[0]; inp.max = PDATES[PLAST];
+  inp.addEventListener("change", () => { if (inp.value) showDay(inp.value); });
+  $("pday-latest").addEventListener("click", () => showDay(PDATES[PLAST]));
+  showDay(PDATES[PLAST]);
 } else {                      /* 旧版 data.json 的兜底 */
+  document.querySelector(".pickday").style.display = "none";
   $("rows").innerHTML = D.indicators.map(it => {
     const r = regOf(it.pct);
     return `<div class="row">
@@ -904,7 +1170,7 @@ function setRange(a, b, redraw){
   syncSliderUI();
   if ($("hist-sub")) $("hist-sub").textContent = subText();
   $("ndx-sub").textContent = ndxSub();
-  if (redraw !== false){ drawTemp(); drawNdx(); drawRR(); }
+  if (redraw !== false){ drawTemp(); drawNdx(); drawRR(); drawTDC(); drawValid(); }
 }
 $("rbtns").addEventListener("click", ev => {
   const b = ev.target.closest("button"); if (!b) return;
@@ -939,5 +1205,5 @@ function ndxSub(){
 }
 setRange(RSTART, REND, false);
 
-drawTemp(); drawNdx(); drawRR();
+drawTemp(); drawNdx(); drawRR(); drawTDC(); drawValid();
 </script>

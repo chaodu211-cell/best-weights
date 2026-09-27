@@ -48,10 +48,66 @@ ALT_LEGS = (1.0, 0.0, 0.0)
 # 杠杆温度内部：多空比 : 交易强度（leverage.py 锁死的是 3:1，这里按扫描结果取 1:1）
 LEV_INNER = (1.0, 1.0)
 # 五个格子的权重（归一后 = 拥挤度11% / TOP2 22% / 杠杆33% / VIX 22% / 前2%占比11%）
+#
+# —— 2026-09-20 曾把抱团类减半，2026-09-21 已全部回退，原因记在这里 ——
+# 减半版（TOP2 13%、前2% 7%、门槛 81.6）的出发点是："若 AI 集中行情延续，抱团水平
+# 变成常态就不再含信息"。2023 年后抱团的秩相关确实塌到 -0.002±0.189，看着像失效。
+# 回退的三条理由，按说服力排序：
+#
+# 1. **它砍掉的正是这轮行情最可能的收尾形态。** 2018-08-27~30 是全样本里最典型的
+#    极致抱团顶（TOP2 93~99.8、前2% 81~98.2 同时顶格，触发后 30 日 QQQ -6.8/-9.0/
+#    -6.3%）。减半后 08-29 温度 81.5，比门槛低 **0.1**，三日连续链从中间断开，整段消失。
+#    若真如假设那样"集中度继续升高"，这类顶只会更可能出现——在需要探头的前夜拆探头。
+# 2. **33% 是扫描出来的峰值，不是随手落的点。** 内核固定、抱团按 TOP2:前2%=2:1 从 0
+#    扫到 53%（门槛每档重标到 66 天）：0% -5.47% / 11% -6.49% / 20% -7.68% /
+#    27% -8.77% / **33% -9.02%** / 38% -8.86% / 50% -7.93%。两侧都下滑，峰在 33%。
+#    而且抱团要 ≥27% 才开始捞到 2018-08，≥33% 才完整捞到。
+# 3. **"抱团失效"的证据只有 1.4σ**（2025-2026 段 -0.002±0.189 vs 2023-2024 的
+#    -0.311±0.109，该段只相当于 13 个互不重叠的 30 日区间）。同一批数据同样支持另一种
+#    读法：集中度一路在升但尚未兑现，所以统计上看不出预测力——那不等于指标坏了。
+#    佐证：2025-2026 段 TOP2 的离散度是全样本最高的 32.2，不是被钉住，是波动了没兑现。
+#
+# 两个附带结论（2026-09-21 实测，别再重试）：
+#   · **CROWD_TOP_FRAC = 0.02 是最优**。前 0.5/1/2/3/5/10% 六档，门槛各自重标到 66 天：
+#     -7.54 / -8.13 / **-9.02** / -8.80 / -8.56 / -8.79%。1%~10% 是一片平台，2% 是峰。
+#   · **抱团两项都不要平滑**。前2% 取 MA5：秩相关从 -0.084 改善到 -0.106，实际成绩却从
+#     -9.02% 掉到 -7.69%，2018-08 从 4 天削到 2 天；六个百分比档位无一例外。TOP2 取
+#     MA3/5/10 同样：秩相关 -0.134/-0.142/-0.154 一路变好，成绩 -7.23/-7.36/-7.42%
+#     一路变差。抱团见顶是**尖峰事件**，平滑正好削在信号最需要分辨力的地方。
+#     这是"别拿秩相关去挑闸门因子"（见 engine.py）的又一个实例。
+#
+# 什么情况下才重新考虑减半：抱团的秩相关在**独立区间数 ≥20** 的样本上仍然接近零
+# （即再观察 6~9 个月），并且那期间出现过至少一次抱团顶而红点没响。
+# 完整论证与这次往返的全过程见 `权重改动记录.md`。
 ALT_W = {"narrow": 1.0, "top2": 2.0, "lev": 3.0, "vix_abs": 2.0, "topshare": 1.0}
 # 门槛：训练窗内对齐到 66 天（与生产红点同频）。加门闸与不加门闸的最优门槛都是 81.7。
+# 改权重必须同时重标门槛——2026-09-20 减半时重标到 81.6，回退时一并改回 81.7。
 ALT_TH = 81.7
 ALT_PERSIST = 3
+
+# —— 红点有效性检验（2026-09-24 加，只加显示与一种并列信号，不改上面的红点）——
+# 起因：放到 2007-2016 长面板上，81.7 十年只亮 2 天。原因是四个滚动分位因子把原始值的
+# **趋势方向**变成读数高低：TOP2、杠杆交易强度的原始值 2010-16 下降、2017 后上升，
+# 温度基数因此差 6.7 分，因子间相关 0.02 对 0.21。固定门槛在另一个时代就够不着。
+# 设计触发频率：标定窗口（2017-10-18~2026-09-18）生产数据上红点占交易日的比例 65/2241。
+# 它是"设计值"，定下后不随数据更新，拿来和实际触发频率比。
+ALT_DESIGN_RATE = 65 / 2241
+# 近 2 年实际触发频率：慢诊断，回答"红点还适不适合当下这个时代"，不预测近期会不会亮。
+# （试过"过去一年温度第 97 分位 < 81.7 就判亮不了"：之后 63 日内仍有 10% 会亮，
+#   2016-12 以来 9 次红点里 5 次恰恰从这个状态里冒出来——单看一年说明不了什么。）
+RATE_WIN = 504
+# 自适应门槛（空心红点）：前一日及以前 3 年（至少 2 年）连 3 日温度的同频分位，无前视。
+# 长面板实测：2010-16 固定门槛只亮 2 天，自适应 64 天 / 相对基准 −1.83pp，下跌顶多抓 3 个
+# （2010-04、2012-04、2015-07）；2017 后 −8.19pp（固定 −10.68pp）。代价是训练窗里弱一些。
+AD_WIN, AD_MINP = 756, 504
+# 滚动 IC：温度与之后 FWD 日收益的 Spearman 相关，窗口 252 日，月末更新。t 日只能用到
+# t−FWD 为止的样本（之后的收益那天还不知道）。负值＝温度高之后跌。长面板上 2010-16
+# 平均 −0.20、2018-26 平均 −0.30；它量的是整个分布（含"温度低之后涨"那一端），不等于顶部预警质量。
+IC_WIN = 252
+# 预先登记：起算日之后首日出现的红点事件写进 _红点预登记.csv（只追加、不改写），
+# 按事先定好的标准评判——这是唯一不受标定过拟合影响的检验。标准写在 说明.md。
+PREREG_FROM = "2026-09-25"
+PREREG_MIN_EVENTS, PREREG_P, PREREG_DRAWS, PREREG_SEED = 5, 0.10, 10000, 20260924
 # VIX 绝对刻度的锚点：10→最热(100)，20→中性(50)，40→最冷(0)。
 # 用固定锚点而不是滚动分位是实测结论；30 日口径下 VIX 是 12 个因子里秩相关最强的
 # 一个（-0.177），而 63 日口径下它几乎无用（-0.074）——它量的本来就是眼前的恐慌。
@@ -153,3 +209,66 @@ def blue_temperature(adj_like):
     w = w / w.sum()
     t = pd.Series((X.values * w).sum(axis=1), index=X.index)
     return t.where(X.notna().all(axis=1))
+
+
+# ───────────────────────── 红点有效性检验 ─────────────────────────
+
+def validity(temp, px):
+    """红点有效性检验要用的几条序列，全部只用当时已有的数据。
+
+    temp: 替代红点温度（全历史）；px: 标的收盘（与 temp 同索引）。
+    返回 dict：t3（连 3 日温度）、hot（固定门槛红点）、th_ad（自适应门槛）、hot_ad（自适应红点）、
+    rate（近 2 年实际触发频率 %）、ic（滚动 IC，月末更新后前向填充）、ic_m（只含月末那几个点）、
+    fwd（之后 FWD 日收益）。
+    """
+    t3 = temp.rolling(ALT_PERSIST, min_periods=ALT_PERSIST).min()
+    hot = (t3 > ALT_TH).fillna(False)
+    th_ad = t3.shift(1).rolling(AD_WIN, min_periods=AD_MINP).quantile(1 - ALT_DESIGN_RATE)
+    hot_ad = (t3 > th_ad).fillna(False)
+    rate = hot.astype(float).where(t3.notna()).rolling(RATE_WIN, min_periods=RATE_WIN).mean() * 100
+    fwd = px.shift(-FWD) / px - 1
+    ic = pd.Series(np.nan, index=temp.index)
+    ends = temp.index.to_series().groupby([temp.index.year, temp.index.month]).max()
+    for t in ends:
+        i = temp.index.get_loc(t) - FWD          # 窗口止于 t−FWD：那天的前瞻收益在 t 日刚好可知
+        if i < IC_WIN - 1:
+            continue
+        a, b = temp.iloc[i - IC_WIN + 1: i + 1], fwd.iloc[i - IC_WIN + 1: i + 1]
+        m = a.notna() & b.notna()
+        if m.sum() >= IC_WIN * 0.8:
+            ic.loc[t] = a[m].corr(b[m], method="spearman")
+    return dict(t3=t3, hot=hot, th_ad=th_ad, hot_ad=hot_ad, rate=rate, ic=ic.ffill(), ic_m=ic.dropna(), fwd=fwd)
+
+
+def events(flag, gap=FWD):
+    """把旗标切成事件：相隔不超过 gap 个交易日的算同一次。返回 [(首日, 末日), ...]。"""
+    pos = np.where(flag.fillna(False).values)[0]
+    out = []
+    for p in pos:
+        if out and p - out[-1][1] <= gap:
+            out[-1][1] = p
+        else:
+            out.append([p, p])
+    return [(flag.index[a], flag.index[b]) for a, b in out]
+
+
+def prereg_judge(firsts, fwd):
+    """按预先登记的标准评判一类信号。
+
+    firsts: 该信号登记在案的事件首日；fwd: 之后 FWD 日收益。
+    标准：前瞻收益已可知的事件 ≥ PREREG_MIN_EVENTS 次后，把同样个数的日子随机放在起算日之后
+    （前瞻收益已可知的交易日里无放回抽取，PREREG_DRAWS 次），p = 随机均值 ≤ 实际均值的比例；
+    p < PREREG_P 判"通过"，否则"未通过"。事件不够时是"累积中"。
+    """
+    pool = fwd[(fwd.index >= pd.Timestamp(PREREG_FROM))].dropna()
+    got = [float(fwd.get(t)) for t in firsts if pd.notna(fwd.get(t, np.nan))]
+    res = {"n": len(firsts), "n_known": len(got), "need": PREREG_MIN_EVENTS,
+           "mean": (float(np.mean(got)) if got else None),
+           "base": (float(pool.mean()) if len(pool) else None), "p": None, "verdict": "累积中"}
+    if len(got) >= PREREG_MIN_EVENTS and len(pool) > len(got):
+        rng = np.random.default_rng(PREREG_SEED)
+        v = pool.values
+        sims = np.array([rng.choice(v, len(got), replace=False).mean() for _ in range(PREREG_DRAWS)])
+        p = float((sims <= np.mean(got)).mean())
+        res.update(p=p, verdict="通过" if p < PREREG_P else "未通过")
+    return res

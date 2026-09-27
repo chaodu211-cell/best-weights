@@ -23,8 +23,60 @@ import pandas as pd
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 H = 30   # 前瞻窗口：2026-09-18 起红点的检验周期改为 30 个交易日（此前仓库各处是 63）
-TARGET = "SOXX"              # 展示与评估标的：2026-09-18 起由纳指(QQQ)换成费城半导体 SOXX
-TARGET_LABEL = "费城半导体 · SOXX"
+# 展示与评估标的：2026-09-18 曾改用费城半导体 SOXX，2026-09-20 按用户要求改回纳指。
+# 权重本来就是以 QQQ 为标的标定的（见 alt_engine 顶部），标的与标定口径现在一致。
+TARGET = "QQQ"
+TARGET_LABEL = "纳斯达克100 · QQQ"
+
+
+PREREG_CSV = os.path.join(BASE, "_红点预登记.csv")
+PREREG_COLS = ["信号", "首日", "温度", "门槛", "登记时间"]
+
+
+def prereg(V, temp, A, log):
+    """预先登记：起算日之后首日出现的红点事件追加写进 _红点预登记.csv，再按事先定好的标准评判。
+
+    只追加、不改写——登记表记的是"当时看到了什么"，之后权重或数据怎么变都不回头改它。
+    log=False（非生产数据，如 --raw raw_long）时只读不写。
+    """
+    old = (pd.read_csv(PREREG_CSV, dtype={"信号": str}, parse_dates=["首日"])
+           if os.path.exists(PREREG_CSV) else pd.DataFrame(columns=PREREG_COLS))
+    start, now = pd.Timestamp(A.PREREG_FROM), pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+    sigs = (("固定门槛", V["hot"], lambda t: A.ALT_TH), ("自适应门槛", V["hot_ad"], lambda t: V["th_ad"].get(t)))
+    new = []
+    for key, flag, th in sigs:
+        have = pd.to_datetime(old.loc[old["信号"] == key, "首日"])
+        for a, _ in A.events(flag):
+            if a < start:
+                continue
+            # 数据修订可能让同一事件的首日挪一两天：45 个自然日内已登记的算同一次
+            if len(have) and ((have - a).abs() <= pd.Timedelta(days=45)).any():
+                continue
+            new.append({"信号": key, "首日": a, "温度": round(float(temp.get(a)), 1),
+                        "门槛": round(float(th(a)), 1), "登记时间": now})
+    if log:
+        if not os.path.exists(PREREG_CSV):
+            pd.DataFrame(columns=PREREG_COLS).to_csv(PREREG_CSV, index=False, encoding="utf-8")
+        if new:
+            nd = pd.DataFrame(new, columns=PREREG_COLS)
+            nd["首日"] = nd["首日"].dt.strftime("%Y-%m-%d")
+            nd.to_csv(PREREG_CSV, mode="a", header=False, index=False, encoding="utf-8")
+            print(f"  预先登记：新增 {len(new)} 条 → {os.path.basename(PREREG_CSV)}")
+        nd_all = pd.DataFrame(new, columns=PREREG_COLS)
+        rows = nd_all if old.empty else (old if nd_all.empty else pd.concat([old, nd_all], ignore_index=True))
+    else:
+        rows = old
+    fwd = V["fwd"]
+    out_rows = []
+    for r in rows.itertuples(index=False):
+        t = pd.Timestamp(r[1])
+        f = fwd.get(t, np.nan)
+        out_rows.append({"sig": r[0], "date": f"{t:%Y-%m-%d}", "temp": float(r[2]), "th": float(r[3]),
+                         "logged": str(r[4]), "fwd": (None if pd.isna(f) else round(float(f) * 100, 2))})
+    judge = {k: A.prereg_judge([pd.Timestamp(x) for x in rows.loc[rows["信号"] == k, "首日"]], fwd)
+             for k, _, _ in sigs}
+    return {"from": A.PREREG_FROM, "min_events": A.PREREG_MIN_EVENTS, "p_cut": A.PREREG_P,
+            "draws": A.PREREG_DRAWS, "rows": out_rows, "judge": judge}
 
 
 def _runs(pos, gap=1):
@@ -37,11 +89,11 @@ def _runs(pos, gap=1):
     return out
 
 
-def patch(d, E, A):
+def patch(d, E, A, log=False):
     """把标准结构改成替代口径。所有差异集中在这里。
 
-    做三件事：① 换成替代红点的温度与旗标、摘掉黑框；② 把展示与评估标的从纳指换成
-    SOXX；③ **按实际参与计算的因子重建分项面板**——生产结构里的 panel 是按生产权重
+    做三件事：① 换成替代红点的温度与旗标、摘掉黑框；② 展示与评估标的按 TARGET 设定
+    （现为纳指 QQQ）；③ **按实际参与计算的因子重建分项面板**——生产结构里的 panel 是按生产权重
     拼的，直接沿用会出现"页面写着某因子、实际权重是 0"这类对不上的情况。
     """
     dates = pd.to_datetime(d["series"]["dates"])
@@ -58,7 +110,7 @@ def patch(d, E, A):
     parts = A.alt_inputs(rawdf, adj, lev_pct, spy, rawdf.index)
     temp_alt = A.alt_temperature(parts)
     if temp_alt is None:
-        sys.exit("替代红点温度算不出来：分项缺失（检查 SOXX / VIX / 杠杆ETF 是否齐全）")
+        sys.exit(f"替代红点温度算不出来：分项缺失（检查 {TARGET} / VIX / 杠杆ETF 是否齐全）")
     ta = temp_alt.reindex(dates)
     # 蓝点用的当日口径分项（换手率/上涨占比/杠杆多空比取未平滑值），与生产完全一致
     rf = rawdf.copy()
@@ -75,7 +127,7 @@ def patch(d, E, A):
                 "vix_anchors": list(A.VIX_ANCHORS), "persist": A.ALT_PERSIST,
                 "fwd": H, "target": TARGET}
 
-    # —— ② 展示与评估标的换成 SOXX ——
+    # —— ② 展示与评估标的（TARGET，现为纳指 QQQ）——
     tgt = E.load(TARGET)
     if tgt is None:
         sys.exit(f"缺 raw/{TARGET}.csv，先抓一次行情再跑")
@@ -114,6 +166,65 @@ def patch(d, E, A):
     d["regime"] = E.regime(d["temperature"])
     d["blue_weights"] = dict(A.BLUE_W)
     d["blue_threshold"] = A.BLUE_TH
+
+    # —— 趋势下跌预警（黄点）：与红/蓝点并列的第三种信号，计算核心在 tdc_signal.py ——
+    try:
+        import tdc_signal as TD
+        t = TD.compute(getattr(E, "RAW", None))
+        d["series"]["tdc"] = ser(t["tdc"])
+        for k in TD.LEGS:
+            d["series"]["tdc_" + {"内部损伤": "dmg", "波动中枢": "vol", "趋势结构": "trend"}[k]] = \
+                ser(t["legs"][k])
+        d["alerts"]["flags"]["tdc"] = [bool(v) for v in t["red"].reindex(dates).fillna(False)]
+        d["alerts"]["rules"].append({
+            "key": "tdc", "name": "趋势下跌预警", "mark": "dot", "color": "#E8C24A",
+            "persist": TD.PERSIST,
+            "desc": (f"纳指距 52 周高点回落在 {-TD.GATE_LO:.0%}~{-TD.GATE_HI:.0%} 之间，且 TDC &gt; "
+                     f"{TD.TH:g} 连续 {TD.PERSIST} 个交易日，且探测器处于武装状态。"
+                     f"<b>同一轮下跌只报一次</b>——报警后立即解除武装，直到 TDC 跌回 "
+                     f"{TD.REARM:g} 以下才重新武装。"
+                     f"TDC 确认时纳指已跌破 {-TD.GATE_HI:.0%} 则<b>本轮作废</b>：确认来得太晚，"
+                     f"这时报警多半落在底部（2010-07、2011-08、2015-08 三次都是）。"
+                     f"TDC = 三条腿等权（内部损伤 / 波动中枢 / 趋势结构），每条腿三个因子等权，"
+                     f"每个因子先做 {TD.WIN} 日滚动分位。"
+                     f"它<b>不预告顶部</b>：五次大跌的顶部当天 TDC 是 32/29/45/46/43。"
+                     f"完整因子筛选、反面证据与代价见「趋势下跌确认.md」。")})
+    except Exception as exc:                      # 缺数据时整块跳过，不要让页面挂掉
+        print(f"  ! 趋势下跌预警未计算：{exc}")
+
+    # —— 红点有效性检验（2026-09-24）：自适应门槛（空心红点）、近 2 年触发频率、滚动 IC、预先登记 ——
+    # 全部在全历史上算（温度与标的都用 rawdf 的索引），再截到展示窗口；来历见 alt_engine 的常量注释。
+    V = A.validity(temp_alt, tgt["close"].reindex(temp_alt.index))
+    red_rule = next(r for r in d["alerts"]["rules"] if r["key"] == "hot")
+    d["alerts"]["flags"]["hot_ad"] = [bool(x) for x in V["hot_ad"].reindex(dates).fillna(False).values]
+    d["alerts"]["rules"].append({
+        "key": "hot_ad", "name": "空心红点（自适应门槛）", "mark": "dot", "hollow": True,
+        "color": red_rule["color"], "persist": A.ALT_PERSIST,
+        "desc": (f"同一个红点温度，门槛换成<b>自适应</b>的：取前一日及以前 {A.AD_WIN // 252} 年"
+                 f"（至少 {A.AD_MINP // 252} 年）连 3 日温度的第 {100 - A.ALT_DESIGN_RATE * 100:.1f} 分位，"
+                 f"让触发频率保持在设计值 {A.ALT_DESIGN_RATE:.1%} 附近，只用当时已有的数据。"
+                 f"与实心红点<b>并列显示、不替换</b>：两者同时成立时画实心。"
+                 f"用途是防止温度基数整体漂移后固定门槛整段失声——2007-2016 长面板上 81.7 十年只亮 2 天，"
+                 f"自适应门槛亮 64 天、后 30 日比基准低 1.8pp，下跌顶多抓到 2010-04、2012-04、2015-07 三个；"
+                 f"代价是 2017 后比固定门槛弱约 2.5pp。")})
+    d["series"]["th_adaptive"] = ser(V["th_ad"])
+    d["series"]["red_rate_2y"] = [num(v, 2) for v in V["rate"].reindex(dates).values]
+    d["series"]["red_ic"] = [num(v, 3) for v in V["ic"].reindex(dates).values]
+    icm = V["ic_m"]
+    ic_end = None
+    if len(icm):
+        j = temp_alt.index.get_loc(icm.index[-1]) - A.FWD
+        ic_end = f"{temp_alt.index[j]:%Y-%m-%d}"
+    lastv = lambda s_: (lambda z: None if z.empty else z.iloc[-1])(s_.reindex(dates).dropna())
+    d["validity"] = {
+        "design_rate": round(A.ALT_DESIGN_RATE * 100, 2), "rate_win": A.RATE_WIN,
+        "rate_now": num(lastv(V["rate"]), 2), "th_fixed": A.ALT_TH, "th_ad_now": num(lastv(V["th_ad"])),
+        "ad_win": A.AD_WIN, "ad_minp": A.AD_MINP, "ic_win": A.IC_WIN, "fwd": A.FWD,
+        "ic_now": num(lastv(V["ic"]), 3), "ic_month": (f"{icm.index[-1]:%Y-%m}" if len(icm) else None),
+        "ic_window_end": ic_end,
+        "ic_hist": [{"m": f"{t:%Y-%m}", "v": round(float(v), 3)} for t, v in icm.items()],
+        "prereg": prereg(V, temp_alt, A, log),
+    }
 
     d["alerts"]["counts"] = {k: int(sum(v)) for k, v in d["alerts"]["flags"].items()}
 
@@ -188,12 +299,33 @@ def patch(d, E, A):
         ("vix_gate", "VIX 收盘", "蓝点的独立闸门", f"蓝点闸门 ≥{E.VIX_COLD}", None,
          f"{num(vix_s.iloc[-1])}", "不进任何温度，只作为蓝点的必要条件"),
     ]
+    # 逐日原始值：页面上"查看某一天"要用。格式与上面 value 列逐字一致，所以直接下发字符串，
+    # 不在前端再写一遍格式化（同一条规则写两份迟早走样）。
+    def fmt(s, f):
+        if s is None:
+            return None
+        return [None if not np.isfinite(v) else f(float(v)) for v in s.reindex(dates).values]
+    lr = lev_pct["ratio"].reindex(dates).values
+    lt = lev_pct["intensity"].reindex(dates).values
+    raw_by_key = {
+        "narrow":   fmt(raw_pct("_narrow_gap"), lambda v: f"{v:+.2f}%"),
+        "top2":     fmt(rawdf["top2"], lambda v: f"{v:.1f}%"),
+        "lev":      [None if not (np.isfinite(a) and np.isfinite(b))
+                     else f"多空比 {a:.0f} · 强度 {b:.0f}" for a, b in zip(lr, lt)],
+        "vix_abs":  fmt(vix_s, lambda v: f"{v:.1f}"),
+        "topshare": fmt(rawdf["_topshare"], lambda v: f"{v:.1f}%"),
+        "ma20":     fmt(rawdf["ma20"], lambda v: f"{v:.1f}%"),
+        "erp":      fmt(rawdf["erp"], lambda v: f"{v:.2f}%"),
+        "vix_gate": fmt(vix_s, lambda v: f"{v:.1f}"),
+    }
+
     panel = []
     for key, name, desc, tag, s, val, sub in rows:
         panel.append({"key": key, "name": name, "desc": desc, "tag": tag,
                       "value": val, "sub": sub,
                       "pct": (None if s is None else num(s.reindex(dates).iloc[-1])),
-                      "series": ([] if s is None else ser(s))})
+                      "series": ([] if s is None else ser(s)),
+                      "raw_series": raw_by_key.get(key)})
     d["panel"] = panel
 
     # 杠杆面板的权重标注要跟实际合成一致
@@ -225,7 +357,7 @@ def main():
     E.OUT = out_json
     E.main()                       # 产出标准结构（不碰 data.json，OUT 已改向）
     d = json.load(open(out_json, encoding="utf-8"))
-    d = patch(d, E, A)
+    d = patch(d, E, A, log=(a.raw is None))   # 只有生产数据才写预先登记表
     json.dump(d, open(out_json, "w", encoding="utf-8"), ensure_ascii=False)
 
     tpl = open(os.path.join(BASE, "alt_tpl.html"), encoding="utf-8").read()
@@ -243,6 +375,14 @@ def main():
           f"蓝点当日温度 {d.get('temperature_fast')}  "
           f"重估期 {'是' if (d['series'].get('repricing') or [False])[-1] else '否'}")
     print(f"基准 后{H}日 {base.mean()*100:+.2f}% / {(base < 0).mean()*100:.0f}%为负")
+    v = d.get("validity") or {}
+    if v:
+        pj = v["prereg"]["judge"]
+        print(f"有效性：近 2 年触发 {v['rate_now']}%（设计 {v['design_rate']}%）  "
+              f"自适应门槛 {v['th_ad_now']}（固定 {v['th_fixed']:g}）  "
+              f"滚动 IC {v['ic_now']}（{v['ic_month']} 月末，窗口止于 {v['ic_window_end']}）  "
+              f"预先登记 自 {v['prereg']['from']}："
+              + "；".join(f"{k} {j['n']} 次/{j['verdict']}" for k, j in pj.items()))
     for k, fl in d["alerts"]["flags"].items():
         pos = np.where(np.array(fl))[0]
         if not len(pos):
