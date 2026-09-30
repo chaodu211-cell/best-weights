@@ -194,12 +194,6 @@ table.ext tr:last-child td{border-bottom:none}
 table.ext .d{font-family:var(--mono);color:var(--ink3);font-size:11.5px;white-space:nowrap}
 table.ext .v{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;font-size:15px}
 table.ext .r{white-space:nowrap;font-size:12.5px}
-.levhead{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap;
-  margin:14px 0 18px;padding-right:4px}
-.levbig{display:flex;align-items:baseline;gap:12px}
-.levbig b{font-family:var(--mono);font-size:46px;font-weight:300;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1}
-.levbig span{font-size:13px;letter-spacing:.06em}
-.levbig em{font-style:normal;font-family:var(--mono);font-size:11.5px;color:var(--ink3)}
 /* #tip2（纳指图的提示框）原本漏在选择器外，等于一个 position:static 的普通 div：
    一有内容就把下面的整块（实际利率图）往下推 174px，悬浮时页面乱跳，
    而且没有背景板、直接压在图上。两个提示框走同一条规则。 */
@@ -316,16 +310,6 @@ table.ext .r{white-space:nowrap;font-size:12.5px}
       <span id="pday-note" aria-live="polite"></span>
     </div>
     <div class="rows" id="rows"></div>
-  </section>
-
-  <section id="levsec" style="display:none">
-    <h2>杠杆温度</h2>
-    <p class="sub" id="lev-sub"></p>
-    <div class="levhead">
-      <div class="levbig"><b id="levtemp">--</b><span id="levregime"></span><em id="levdelta"></em></div>
-      <div id="levspark"></div>
-    </div>
-    <div class="rows" id="levrows"></div>
   </section>
 
   <section>
@@ -1126,41 +1110,6 @@ if (PANEL){
       <div class="r-pc" style="color:${r.hex}">${it.pct.toFixed(0)}<s>分位</s></div>
     </div>`;
   }).join("");
-}
-
-/* ---- 杠杆温度：两条腿拆开看 ---- */
-const LM = D.leverage_monitor || null;
-if (LM && LM.temperature != null){
-  const r = regOf(LM.temperature);
-  $("levtemp").textContent = LM.temperature.toFixed(0);
-  $("levtemp").style.color = r.hex;
-  $("levregime").textContent = LM.regime;
-  $("levregime").style.color = r.hex;
-  const LS = LM.series.temperature || [], n = LS.length;
-  const back = k => { for (let i = n-1-k; i >= 0; i--) if (LS[i] != null) return LS[i]; return null; };
-  const d20 = n > 21 ? back(21) : null;
-  $("levdelta").textContent = (d20 == null ? "" : `20个交易日前 ${d20.toFixed(0)}（${(LM.temperature-d20>=0?"+":"")}${(LM.temperature-d20).toFixed(0)}）`)
-    + `　截至 ${LM.as_of}`;
-  $("levspark").innerHTML = spark(LS, r.hex);
-  const tot = LM.components.reduce((s2,x) => s2 + x.weight, 0);
-  $("lev-sub").innerHTML =
-    `杠杆ETF成交额的两个维度——加杠杆的<b>方向</b>与用杠杆包装交易的<b>强度</b>——各取 ${LM.ref}分位后按 ` +
-    LM.components.map(c => `${c.weight}`).join(":") + ` 加权。` +
-    `方向是主项，强度负责否决：多空比爆表但没人真往杠杆产品里砸钱时，把读数压下去。`;
-  $("levrows").innerHTML = LM.components.map(c => {
-    const rr = regOf(c.pct == null ? 50 : c.pct);
-    return `<div class="row">
-      <div class="r-nm"><b>${c.name}</b><em>${c.desc}</em></div>
-      <div class="r-rw">${c.raw == null ? "—" : c.raw.toFixed(1) + (c.unit||"")}<u>${c.raw_label}　${LM.smooth}日均</u></div>
-      <div class="r-bar">
-        <div class="pbar"><i style="width:${c.pct||0}%;background:${rr.hex}"></i></div>
-        <div class="pticks">${[20,40,60,80].map(t => `<u style="left:${t}%"></u>`).join("")}</div>
-        <div style="margin-top:6px">${spark(LM.series[c.key + "_pct"] || [], rr.hex)}</div>
-      </div>
-      <div class="r-pc" style="color:${rr.hex}">${c.pct == null ? "—" : c.pct.toFixed(0)}<s>分位 · 权重 ${c.weight}</s></div>
-    </div>`;
-  }).join("");
-  $("levsec").style.display = "";
 }
 
 /* ---- method / limits ---- */
