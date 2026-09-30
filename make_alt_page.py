@@ -209,8 +209,9 @@ def patch(d, E, A, log=False):
     dirs = E.direction(spy, rawdf.index)
     _, adj, _, _ = E.compose(rawdf, dirs)
     lev_pct, _ = E.leverage_monitor(rawdf)
-    # 2026-09-30 起红点的杠杆因子并入正股成交额前十的单股杠杆 ETF（single_lev.py）；之前的读数原样保留
-    lev_pct, lev_single = A.lev_single(rawdf.index, lev_pct)
+    # 2026-09-30 起杠杆多空比、交易强度并入正股成交额前十的单股杠杆 ETF（single_lev.py）；之前的读数原样保留。
+    # 红点的杠杆因子在这里换；蓝点的多空比在下面 compose 之后用 lev_raw 换（blue_lev_splice）
+    lev_pct, lev_single, lev_raw = A.lev_single(rawdf.index, lev_pct)
     # 传 lev_pct 而不是 lev_temp：杠杆温度的内部比例由 alt_engine.LEV_INNER 决定（1:1），
     # 不走 leverage.py 的 LEV_W（3:1）。实测这一处就值 2.65pp。
     parts = A.alt_inputs(rawdf, adj, lev_pct, spy, rawdf.index)
@@ -224,6 +225,11 @@ def patch(d, E, A, log=False):
                  "leverage": "_leverage_daily"}.items():
         rf[k] = rawdf[v]
     _, adjf, _, _ = E.compose(rf, dirs, fast=True)
+    # 蓝点的杠杆多空比也自 2026-09-30 起并入单股杠杆 ETF（判定用当日口径，展示用平滑口径），之前原样保留
+    adj_blue = adj
+    if lev_raw is not None:
+        adjf = A.blue_lev_splice(adjf, dirs, lev_raw["ratio_daily"], fast=True)
+        adj_blue = A.blue_lev_splice(adj, dirs, lev_raw["ratio"], fast=False)
 
     d["temperature_sell"] = num(ta.iloc[-1])
     d["series"]["temperature_sell"] = ser(temp_alt)
@@ -261,7 +267,7 @@ def patch(d, E, A, log=False):
 
     # —— 蓝点也换权重（BLUE_W），闸门 VIX >= VIX_COLD 不动 ——
     bt_fast = A.blue_temperature(adjf)          # 判定用：当日未平滑口径
-    bt_show = A.blue_temperature(adj)           # 展示用：平滑口径
+    bt_show = A.blue_temperature(adj_blue)      # 展示用：平滑口径
     if bt_fast is None or bt_show is None:
         sys.exit("蓝点温度算不出来：BLUE_W 里的分项缺失")
     vix_all = E.load_vix(dates)
@@ -401,7 +407,10 @@ def patch(d, E, A, log=False):
                 f"扫描的局部最优是把多空比加到 50%，只再值 1.07pp 且与全网格证据矛盾"
                 f"（多空比单因子秩相关 −0.041，ERP 是 −0.336），故未采纳。"
                 f"口径按前瞻 {H} 个交易日、以 {TARGET} 为标的检验。"
-                f"【只在训练窗验证过：42 天只有 6~7 个独立事件，标准误约 4.1pp】")
+                f"【只在训练窗验证过：42 天只有 6~7 个独立事件，标准误约 4.1pp】"
+                + (f"<b>{lev_single['from']} 起</b>杠杆多空比与红点同口径，并入正股成交额前 {lev_single['top_n']} 只股票"
+                   f"的单股杠杆 ETF；此前的读数原样保留。单股产品上市（2022-08）以来 31 个 VIX ≥ {E.VIX_COLD} 的日子里，"
+                   f"两种口径的蓝点逐日相同。" if lev_single else ""))
 
     # —— ③ 按实际计算重建分项面板 ——
     raw_pct = lambda c: (rawdf[c].reindex(dates) if c in rawdf.columns else None)
@@ -419,7 +428,7 @@ def patch(d, E, A, log=False):
          f"多空比 {num(lev_pct['ratio'].reindex(dates).iloc[-1]):.0f} · "
          f"强度 {num(lev_pct['intensity'].reindex(dates).iloc[-1]):.0f}",
          f"两项分位按 {li:g}:{lj:g} 合成；蓝点只用多空比的当日口径"
-         + (f"；{lev_single['from']} 起红点这一项并入正股成交额前 {lev_single['top_n']} 的单股杠杆 ETF"
+         + (f"；{lev_single['from']} 起两项（红点与蓝点）都并入正股成交额前 {lev_single['top_n']} 的单股杠杆 ETF"
             + (f"（今天：{'、'.join(lev_single['picks'])}，占全部杠杆 ETF 成交额 {lev_single['share']}%）"
                if lev_single["active"] else "")
             if lev_single else "")),

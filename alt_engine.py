@@ -47,7 +47,8 @@ FWD = 30
 # 上涨拥挤度内部：市值跑赢等权 : 宽度恶化 : 贴近峰值
 ALT_LEGS = (1.0, 0.0, 0.0)
 # 杠杆温度内部：多空比 : 交易强度（leverage.py 锁死的是 3:1，这里按扫描结果取 1:1）
-# 2026-09-30 起两项的原始量并入「正股成交额前十」的单股杠杆 ETF，之前的读数不动——见 lev_single()、single_lev.py
+# 2026-09-30 起两项的原始量并入「正股成交额前十」的单股杠杆 ETF，之前的读数不动——见 lev_single()、single_lev.py；
+# 蓝点用的杠杆多空比同日起也换成同一口径（blue_lev_splice）
 LEV_INNER = (1.0, 1.0)
 # 五个格子的权重（归一后 = 拥挤度11% / TOP2 22% / 杠杆33% / VIX 22% / 前2%占比11%）
 #
@@ -136,30 +137,31 @@ def lev_single(idx, lev_pct):
     """红点杠杆因子并入「正股成交额前十」的单股杠杆 ETF（2026-09-30 起，规则与来历见 single_lev.py）。
 
     lev_pct: engine.leverage_monitor 的分位（旧口径，只含 15 只指数杠杆 ETF）。
-    → (拼接后的 lev_pct, 页面用的说明 dict 或 None)。single_lev.FROM 之前的读数原样保留；
+    → (拼接后的 lev_pct, 页面用的说明 dict 或 None, 新口径原始量 dict 或 None)。single_lev.FROM 之前的读数原样保留；
     之后换成新口径的分位——新口径的原始量与它自己同口径的过去 252 日比，不和旧口径混比。
     多空比、交易强度的公式与 leverage.letf_components 完全相同，只是做多/做空两边各加上单股杠杆 ETF 的成交额；
-    单股部分为 0 的年份，新旧原始量逐日相同。只改红点；蓝点的杠杆多空比（当日口径）不经过这里。
+    单股部分为 0 的年份，新旧原始量逐日相同。蓝点的杠杆多空比用返回的原始量另行拼接（blue_lev_splice）。
     """
     import leverage as LV
     import single_lev as SL
     m = SL.load()
     if not m:
-        return lev_pct, None
+        return lev_pct, None, None
     got = E.load_many(SL.etfs(m))
     if not got:
-        return lev_pct, None
+        return lev_pct, None, None
     dvl = LV._sum_dv(E.load_many(E.LEV_LONG), idx)
     dvs = LV._sum_dv(E.load_many(E.LEV_SHORT), idx)
     base = {t: E.load(t) for t in LV.BASE_ETFS}
     dvb = LV._sum_dv({t: d for t, d in base.items() if d is not None}, idx)
     if dvl is None or dvs is None or dvb is None:
-        return lev_pct, None
+        return lev_pct, None, None
     sdv = pd.DataFrame({t: LV.dollar_volume(d) for t, d in E.load_many(E.STOCKS).items()}).reindex(idx)
     edv = pd.DataFrame({t: LV.dollar_volume(d) for t, d in got.items()}).reindex(idx)
     la, sa, picks = SL.components(idx, sdv, edv, m)
     L, S = dvl + la, dvs + sa
-    ratio = (L / (L + S).replace(0, np.nan) * 100.0).rolling(LV.LEV_SMOOTH, min_periods=1).mean()
+    ratio_daily = L / (L + S).replace(0, np.nan) * 100.0
+    ratio = ratio_daily.rolling(LV.LEV_SMOOTH, min_periods=1).mean()
     inten = ((L + S) / dvb.replace(0, np.nan) * 100.0).rolling(LV.LEV_SMOOTH, min_periods=1).mean()
     new = pd.DataFrame({"ratio": E.rolling_pct(ratio), "intensity": E.rolling_pct(inten)}, index=idx)
     on = idx >= pd.Timestamp(SL.FROM)
@@ -175,7 +177,24 @@ def lev_single(idx, lev_pct):
             # 新旧两种口径在同一天的读数，供核对"切换处没有跳变"
             "old_now": {c: (None if c not in lev_pct.columns or not np.isfinite(lev_pct[c].loc[t]) else round(float(lev_pct[c].loc[t]), 1)) for c in ("ratio", "intensity")},
             "new_now": {c: (None if not np.isfinite(new[c].loc[t]) else round(float(new[c].loc[t]), 1)) for c in ("ratio", "intensity")}}
-    return out, info
+    return out, info, {"ratio": ratio, "ratio_daily": ratio_daily}
+
+
+def blue_lev_splice(adj_like, dirs, ratio, fast):
+    """蓝点的杠杆多空比同样自 single_lev.FROM 起换新口径（2026-09-30 用户定：红点、蓝点用同一个多空比）。
+
+    adj_like: engine.compose 的方向修正后分位（fast=True 是判定用的当日口径 adjf，False 是展示用的平滑口径 adj）；
+    ratio: 对应口径的新多空比原始量（当日值或 5 日均）。分位与方向修正走 engine.compose 同一条路，只换这一列的输入；
+    FROM 之前原样保留。实测（2022-08 单股产品上市以来 31 个 VIX ≥ 30 的日子）：蓝点一天不变，温度差最大 2.3 分。
+    """
+    import single_lev as SL
+    if "leverage" not in adj_like.columns:
+        return adj_like
+    _, adj_new, _, _ = E.compose(pd.DataFrame({"leverage": ratio}), dirs, fast=fast)
+    out = adj_like.copy()
+    on = out.index >= pd.Timestamp(SL.FROM)
+    out.loc[on, "leverage"] = adj_new["leverage"].reindex(out.index)[on]
+    return out
 
 
 def alt_inputs(rawdf, adj, lev_pct, spy, idx):
