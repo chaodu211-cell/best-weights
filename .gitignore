@@ -2,3 +2,6 @@
 .Rhistory
 raw/
 *.png
+策略回测/etf/
+__pycache__/
+策略回测/_grid*.csv

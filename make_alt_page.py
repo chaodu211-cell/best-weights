@@ -375,6 +375,13 @@ def main():
     E.main()                       # 产出标准结构（不碰 data.json，OUT 已改向）
     d = json.load(open(out_json, encoding="utf-8"))
     d = patch(d, E, A, log=(a.raw is None))   # 只有生产数据才写预先登记表
+    # —— 策略持仓（2026-09-28 加）：策略回测/live.py，规则与回测同一份代码；算不出来就不显示，不影响其余部分 ——
+    try:
+        sys.path.insert(0, os.path.join(BASE, "策略回测"))
+        import live
+        d["strategy"] = live.current(d, E.RAW)
+    except Exception as exc:
+        print(f"  ! 策略持仓未计算：{exc}")
     json.dump(d, open(out_json, "w", encoding="utf-8"), ensure_ascii=False)
 
     tpl = open(os.path.join(BASE, "alt_tpl.html"), encoding="utf-8").read()
