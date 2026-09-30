@@ -158,8 +158,10 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "$MSG"
+          # --autostash：流水线刚重写过 data_alt.json、dashboard_alt.html、sectors.json 等受跟踪文件，
+          # 不带它 git 会以"有未提交改动"拒绝 rebase（2026-09-30 第一次运行就因此失败）
           for i in 1 2 3; do
-            if git pull --rebase --quiet origin main && git push origin HEAD:main; then
+            if git pull --rebase --autostash --quiet origin main && git push origin HEAD:main; then
               echo "已提交：$MSG"
               exit 0
             fi
