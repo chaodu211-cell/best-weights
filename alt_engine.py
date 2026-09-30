@@ -36,6 +36,7 @@
   · 加入 VIX 绝对刻度 与 前2%成交额个股占比
   · 杠杆温度权重 2/9 → 3/9，且内部比例 3:1 → 1:1
 """
+import json
 import numpy as np
 import pandas as pd
 import engine as E
@@ -46,6 +47,7 @@ FWD = 30
 # 上涨拥挤度内部：市值跑赢等权 : 宽度恶化 : 贴近峰值
 ALT_LEGS = (1.0, 0.0, 0.0)
 # 杠杆温度内部：多空比 : 交易强度（leverage.py 锁死的是 3:1，这里按扫描结果取 1:1）
+# 2026-09-30 起两项的原始量并入「正股成交额前十」的单股杠杆 ETF，之前的读数不动——见 lev_single()、single_lev.py
 LEV_INNER = (1.0, 1.0)
 # 五个格子的权重（归一后 = 拥挤度11% / TOP2 22% / 杠杆33% / VIX 22% / 前2%占比11%）
 #
@@ -128,6 +130,52 @@ VIX_ANCHORS = (10.0, 20.0, 40.0)
 
 LABELS = {"narrow": "市值加权跑赢等权", "top2": "TOP2抱团", "lev": "杠杆温度",
           "vix_abs": "VIX绝对刻度", "topshare": "前2%成交额占比"}
+
+
+def lev_single(idx, lev_pct):
+    """红点杠杆因子并入「正股成交额前十」的单股杠杆 ETF（2026-09-30 起，规则与来历见 single_lev.py）。
+
+    lev_pct: engine.leverage_monitor 的分位（旧口径，只含 15 只指数杠杆 ETF）。
+    → (拼接后的 lev_pct, 页面用的说明 dict 或 None)。single_lev.FROM 之前的读数原样保留；
+    之后换成新口径的分位——新口径的原始量与它自己同口径的过去 252 日比，不和旧口径混比。
+    多空比、交易强度的公式与 leverage.letf_components 完全相同，只是做多/做空两边各加上单股杠杆 ETF 的成交额；
+    单股部分为 0 的年份，新旧原始量逐日相同。只改红点；蓝点的杠杆多空比（当日口径）不经过这里。
+    """
+    import leverage as LV
+    import single_lev as SL
+    m = SL.load()
+    if not m:
+        return lev_pct, None
+    got = E.load_many(SL.etfs(m))
+    if not got:
+        return lev_pct, None
+    dvl = LV._sum_dv(E.load_many(E.LEV_LONG), idx)
+    dvs = LV._sum_dv(E.load_many(E.LEV_SHORT), idx)
+    base = {t: E.load(t) for t in LV.BASE_ETFS}
+    dvb = LV._sum_dv({t: d for t, d in base.items() if d is not None}, idx)
+    if dvl is None or dvs is None or dvb is None:
+        return lev_pct, None
+    sdv = pd.DataFrame({t: LV.dollar_volume(d) for t, d in E.load_many(E.STOCKS).items()}).reindex(idx)
+    edv = pd.DataFrame({t: LV.dollar_volume(d) for t, d in got.items()}).reindex(idx)
+    la, sa, picks = SL.components(idx, sdv, edv, m)
+    L, S = dvl + la, dvs + sa
+    ratio = (L / (L + S).replace(0, np.nan) * 100.0).rolling(LV.LEV_SMOOTH, min_periods=1).mean()
+    inten = ((L + S) / dvb.replace(0, np.nan) * 100.0).rolling(LV.LEV_SMOOTH, min_periods=1).mean()
+    new = pd.DataFrame({"ratio": E.rolling_pct(ratio), "intensity": E.rolling_pct(inten)}, index=idx)
+    on = idx >= pd.Timestamp(SL.FROM)
+    out = lev_pct.copy()
+    for c in ("ratio", "intensity"):
+        if c in out.columns:
+            out.loc[on, c] = new.loc[on, c]
+    t = idx[-1]
+    tot = float((L + S).loc[t])
+    info = {"from": SL.FROM, "top_n": SL.TOP_N, "active": bool(on[-1]), "picks": list(picks.loc[t]),
+            "share": (None if not tot else round(float((la + sa).loc[t]) / tot * 100, 1)),
+            "n_etfs": len(got), "n_map": len(SL.etfs(m)), "map_updated": json.load(open(SL.MAP_JSON, encoding="utf-8"))["updated"],
+            # 新旧两种口径在同一天的读数，供核对"切换处没有跳变"
+            "old_now": {c: (None if c not in lev_pct.columns or not np.isfinite(lev_pct[c].loc[t]) else round(float(lev_pct[c].loc[t]), 1)) for c in ("ratio", "intensity")},
+            "new_now": {c: (None if not np.isfinite(new[c].loc[t]) else round(float(new[c].loc[t]), 1)) for c in ("ratio", "intensity")}}
+    return out, info
 
 
 def alt_inputs(rawdf, adj, lev_pct, spy, idx):

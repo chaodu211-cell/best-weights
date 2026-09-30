@@ -19,6 +19,7 @@ import argparse, json, os, re, ssl, sys, threading, time
 import urllib.error, urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import hist_store as H   # raw/ 只增不减 + hist/ 长历史存档（2026-09-30）
+import single_lev as SL  # 红点杠杆因子并入的单股杠杆 ETF（2026-09-30）
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 RAW = os.path.join(BASE, "raw")
@@ -237,7 +238,13 @@ def main():
     if a.limit:
         uni = dict(list(uni.items())[:a.limit])
 
+    # 单股杠杆 ETF 对照表：超过 30 天就重爬发行商页面补新产品（失败或结果不完整时沿用旧表）
+    if not a.limit:
+        note = SL.maybe_refresh(get, set(uni))
+        if note:
+            print("   " + note)
     targets = [(s, False) for s in uni] + [(s, True) for s in ETFS if s not in uni]
+    targets += [(s, True) for s in SL.etfs() if s not in uni and s not in ETFS]
 
     # 距上次全量太久就强制全量一次：增量每次只校验重叠区间，长期跑下去总有边角情况
     # （长时间停机、数据源补历史、个别票停牌）积累不到，定期整体重下一次最省心。

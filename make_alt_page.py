@@ -209,6 +209,8 @@ def patch(d, E, A, log=False):
     dirs = E.direction(spy, rawdf.index)
     _, adj, _, _ = E.compose(rawdf, dirs)
     lev_pct, _ = E.leverage_monitor(rawdf)
+    # 2026-09-30 起红点的杠杆因子并入正股成交额前十的单股杠杆 ETF（single_lev.py）；之前的读数原样保留
+    lev_pct, lev_single = A.lev_single(rawdf.index, lev_pct)
     # 传 lev_pct 而不是 lev_temp：杠杆温度的内部比例由 alt_engine.LEV_INNER 决定（1:1），
     # 不走 leverage.py 的 LEV_W（3:1）。实测这一处就值 2.65pp。
     parts = A.alt_inputs(rawdf, adj, lev_pct, spy, rawdf.index)
@@ -229,7 +231,15 @@ def patch(d, E, A, log=False):
     d["sell_weights"] = {k: v for k, v in A.ALT_W.items()}
     d["alt"] = {"legs": list(A.ALT_LEGS), "lev_inner": list(A.LEV_INNER),
                 "vix_anchors": list(A.VIX_ANCHORS), "persist": A.ALT_PERSIST,
-                "fwd": H, "target": TARGET}
+                "fwd": H, "target": TARGET, "lev_single": lev_single}
+    if lev_single:
+        ls = lev_single
+        print(f"  杠杆因子·单股杠杆 ETF（{ls['from']} 起{'生效' if ls['active'] else '，尚未生效'}）："
+              f"今天前 {ls['top_n']} 只 {','.join(ls['picks'])}，占全部杠杆 ETF 成交额 {ls['share']}%；"
+              f"同日旧口径 多空比 {ls['old_now']['ratio']} 强度 {ls['old_now']['intensity']} → "
+              f"新口径 {ls['new_now']['ratio']} / {ls['new_now']['intensity']}（{ls['n_etfs']}/{ls['n_map']} 只 ETF 有数据）")
+    else:
+        print("  ! 杠杆因子·单股杠杆 ETF 未计算（缺对照表或行情），沿用旧口径")
 
     # —— ② 展示与评估标的（TARGET，现为纳指 QQQ）——
     tgt = E.load(TARGET)
@@ -370,7 +380,11 @@ def patch(d, E, A, log=False):
                 f"<b>VIX</b>用固定锚点 {'/'.join(f'{x:g}' for x in A.VIX_ANCHORS)} 映射，不是滚动分位；"
                 f"<b>市值加权跑赢等权</b>保留「只在上涨市成立、下跌市记中性 50」的语义。"
                 f"权重按前瞻 {H} 个交易日、以 {TARGET} 为标的标定。"
-                f"站上MA20、换手率、宽度恶化、贴近峰值四项扫出来的权重都是 0，未参与。")
+                f"站上MA20、换手率、宽度恶化、贴近峰值四项扫出来的权重都是 0，未参与。"
+                + (f"<b>{lev_single['from']} 起</b>杠杆温度并入正股成交额前 {lev_single['top_n']} 只股票"
+                   f"（没有杠杆 ETF 的顺延）的全部单股杠杆 ETF：做多的加进做多、做空的加进做空；"
+                   f"此前的读数原样保留，之后的分位与同口径的过去 252 日比。门槛 {A.ALT_TH:g} 未重标。"
+                   if lev_single else ""))
         elif r["key"] == "cold":
             r["name"] = "蓝点预警（替代权重）"
             r["desc"] = (
@@ -404,7 +418,11 @@ def patch(d, E, A, log=False):
          f"红点 {pc['lev']:.0f}% · 蓝点 {bpc['leverage']:.0f}%（仅多空比）", parts["lev"],
          f"多空比 {num(lev_pct['ratio'].reindex(dates).iloc[-1]):.0f} · "
          f"强度 {num(lev_pct['intensity'].reindex(dates).iloc[-1]):.0f}",
-         f"两项分位按 {li:g}:{lj:g} 合成；蓝点只用多空比的当日口径"),
+         f"两项分位按 {li:g}:{lj:g} 合成；蓝点只用多空比的当日口径"
+         + (f"；{lev_single['from']} 起红点这一项并入正股成交额前 {lev_single['top_n']} 的单股杠杆 ETF"
+            + (f"（今天：{'、'.join(lev_single['picks'])}，占全部杠杆 ETF 成交额 {lev_single['share']}%）"
+               if lev_single["active"] else "")
+            if lev_single else "")),
         ("vix_abs", "VIX（绝对刻度）", "恐慌／麻木",
          f"红点 {pc['vix_abs']:.0f}%", parts["vix_abs"],
          f"{num(vix_s.iloc[-1])}",

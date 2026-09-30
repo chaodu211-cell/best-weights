@@ -1,0 +1,782 @@
+{
+ "updated": "2026-09-30",
+ "source": "stockanalysis.com 发行商页面的基金全称",
+ "rule": "倍数绝对值 > 1 的单股杠杆/反向 ETF；GOOG 并入 GOOGL",
+ "stocks": {
+  "AAPL": {
+   "long": [
+    [
+     "AAPB",
+     2.0
+    ],
+    [
+     "AAPU",
+     2.0
+    ],
+    [
+     "AAPX",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "ADBE": {
+   "long": [
+    [
+     "ADBU",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "AKAM": {
+   "long": [
+    [
+     "AKAL",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "AMAT": {
+   "long": [
+    [
+     "AMA",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "AMD": {
+   "long": [
+    [
+     "AMDL",
+     2.0
+    ],
+    [
+     "AMUU",
+     2.0
+    ]
+   ],
+   "short": [
+    [
+     "DAMD",
+     -2.0
+    ]
+   ]
+  },
+  "AMZN": {
+   "long": [
+    [
+     "AMZU",
+     2.0
+    ],
+    [
+     "AMZZ",
+     2.0
+    ]
+   ],
+   "short": [
+    [
+     "AMZO",
+     -2.0
+    ]
+   ]
+  },
+  "ANET": {
+   "long": [
+    [
+     "ANEL",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "APH": {
+   "long": [
+    [
+     "APHU",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "APP": {
+   "long": [
+    [
+     "APPX",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "AVGO": {
+   "long": [
+    [
+     "AVGU",
+     2.0
+    ],
+    [
+     "AVGX",
+     2.0
+    ],
+    [
+     "AVL",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "BA": {
+   "long": [
+    [
+     "BOEU",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "BE": {
+   "long": [
+    [
+     "BEX",
+     2.0
+    ]
+   ],
+   "short": [
+    [
+     "BEZ",
+     -2.0
+    ]
+   ]
+  },
+  "BRK-B": {
+   "long": [
+    [
+     "BRKU",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "CEG": {
+   "long": [
+    [
+     "CEGX",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "CIEN": {
+   "long": [
+    [
+     "CIEX",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "COHR": {
+   "long": [
+    [
+     "COHX",
+     2.0
+    ]
+   ],
+   "short": [
+    [
+     "COHQ",
+     -2.0
+    ]
+   ]
+  },
+  "COIN": {
+   "long": [
+    [
+     "COIA",
+     2.0
+    ],
+    [
+     "CONL",
+     2.0
+    ],
+    [
+     "CONX",
+     2.0
+    ]
+   ],
+   "short": [
+    [
+     "CONI",
+     -2.0
+    ]
+   ]
+  },
+  "CRWD": {
+   "long": [
+    [
+     "CRWL",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "CSCO": {
+   "long": [
+    [
+     "CSCL",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "DELL": {
+   "long": [
+    [
+     "DLLL",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "GEV": {
+   "long": [
+    [
+     "GEVX",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "GOOGL": {
+   "long": [
+    [
+     "GGLL",
+     2.0
+    ],
+    [
+     "GOOX",
+     2.0
+    ],
+    [
+     "GOU",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "HOOD": {
+   "long": [
+    [
+     "HODU",
+     2.0
+    ],
+    [
+     "HOOX",
+     2.0
+    ],
+    [
+     "ROBN",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "IBM": {
+   "long": [
+    [
+     "IBX",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "INTC": {
+   "long": [
+    [
+     "INTW",
+     2.0
+    ],
+    [
+     "LINT",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "ISRG": {
+   "long": [
+    [
+     "ISUL",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "LITE": {
+   "long": [
+    [
+     "LITU",
+     2.0
+    ],
+    [
+     "LITX",
+     2.0
+    ]
+   ],
+   "short": [
+    [
+     "LITZ",
+     -2.0
+    ]
+   ]
+  },
+  "LLY": {
+   "long": [
+    [
+     "ELIL",
+     2.0
+    ],
+    [
+     "LLYX",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "LMT": {
+   "long": [
+    [
+     "LMTL",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "LRCX": {
+   "long": [
+    [
+     "LRCU",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "MCHP": {
+   "long": [
+    [
+     "MCHU",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "META": {
+   "long": [
+    [
+     "FBL",
+     2.0
+    ],
+    [
+     "METU",
+     2.0
+    ]
+   ],
+   "short": [
+    [
+     "METQ",
+     -2.0
+    ]
+   ]
+  },
+  "MPWR": {
+   "long": [
+    [
+     "MPWX",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "MRNA": {
+   "long": [
+    [
+     "MRNX",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "MRVL": {
+   "long": [
+    [
+     "MRVU",
+     2.0
+    ],
+    [
+     "MVLL",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "MSFT": {
+   "long": [
+    [
+     "MSFL",
+     2.0
+    ],
+    [
+     "MSFU",
+     2.0
+    ],
+    [
+     "MSFX",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "MU": {
+   "long": [
+    [
+     "MULL",
+     2.0
+    ],
+    [
+     "MUU",
+     2.0
+    ]
+   ],
+   "short": [
+    [
+     "MUZ",
+     -2.0
+    ]
+   ]
+  },
+  "NFLX": {
+   "long": [
+    [
+     "NFLU",
+     2.0
+    ],
+    [
+     "NFXL",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "NOW": {
+   "long": [
+    [
+     "NOWL",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "NTAP": {
+   "long": [
+    [
+     "NTAL",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "NVDA": {
+   "long": [
+    [
+     "NVDB",
+     2.0
+    ],
+    [
+     "NVDL",
+     2.0
+    ],
+    [
+     "NVDU",
+     2.0
+    ],
+    [
+     "NVDX",
+     2.0
+    ]
+   ],
+   "short": [
+    [
+     "NVD",
+     -2.0
+    ],
+    [
+     "NVDQ",
+     -2.0
+    ],
+    [
+     "NVDS",
+     -1.5
+    ]
+   ]
+  },
+  "NXPI": {
+   "long": [
+    [
+     "NXPX",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "ON": {
+   "long": [
+    [
+     "ONX",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "ORCL": {
+   "long": [
+    [
+     "ORCU",
+     2.0
+    ],
+    [
+     "ORCX",
+     2.0
+    ]
+   ],
+   "short": [
+    [
+     "ORCZ",
+     -2.0
+    ]
+   ]
+  },
+  "P": {
+   "long": [
+    [
+     "PUL",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "PANW": {
+   "long": [
+    [
+     "PALU",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "PLTR": {
+   "long": [
+    [
+     "PLTA",
+     2.0
+    ],
+    [
+     "PLTU",
+     2.0
+    ],
+    [
+     "PTIR",
+     2.0
+    ]
+   ],
+   "short": [
+    [
+     "PLTZ",
+     -2.0
+    ]
+   ]
+  },
+  "PYPL": {
+   "long": [
+    [
+     "PYPU",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "QCOM": {
+   "long": [
+    [
+     "QCML",
+     2.0
+    ],
+    [
+     "QCMU",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "RDDT": {
+   "long": [
+    [
+     "RDTL",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "SMCI": {
+   "long": [
+    [
+     "SMCL",
+     2.0
+    ],
+    [
+     "SMCX",
+     2.0
+    ]
+   ],
+   "short": [
+    [
+     "SMCZ",
+     -2.0
+    ]
+   ]
+  },
+  "SNDK": {
+   "long": [
+    [
+     "SNDU",
+     2.0
+    ],
+    [
+     "SNXX",
+     2.0
+    ]
+   ],
+   "short": [
+    [
+     "SNDQ",
+     -2.0
+    ]
+   ]
+  },
+  "STX": {
+   "long": [
+    [
+     "STXL",
+     2.0
+    ],
+    [
+     "STXX",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "TSLA": {
+   "long": [
+    [
+     "TSL",
+     1.25
+    ],
+    [
+     "TSLI",
+     2.0
+    ],
+    [
+     "TSLL",
+     2.0
+    ],
+    [
+     "TSLR",
+     2.0
+    ],
+    [
+     "TSLT",
+     2.0
+    ]
+   ],
+   "short": [
+    [
+     "TSDD",
+     -2.0
+    ],
+    [
+     "TSLQ",
+     -2.0
+    ],
+    [
+     "TSLZ",
+     -2.0
+    ]
+   ]
+  },
+  "TXN": {
+   "long": [
+    [
+     "TXNU",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "UBER": {
+   "long": [
+    [
+     "UBRL",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "UNH": {
+   "long": [
+    [
+     "UNHU",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "VRT": {
+   "long": [
+    [
+     "VRTL",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "VST": {
+   "long": [
+    [
+     "VSTL",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "WDC": {
+   "long": [
+    [
+     "WDCX",
+     2.0
+    ]
+   ],
+   "short": []
+  },
+  "XOM": {
+   "long": [
+    [
+     "XOMX",
+     2.0
+    ]
+   ],
+   "short": []
+  }
+ }
+}
