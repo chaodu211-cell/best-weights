@@ -5,6 +5,7 @@ name: daily
 # 分工：GitHub 负责算，Claude 负责推送。
 #   · 本工作流：北京时间 19:07 左右（周一至周五）跑完整条流水线，页面发布到
 #     https://chaodu211-cell.github.io/best-weights/ ，同目录下另有 status.json（截至日、抓取是否成功）。
+#     每次把截止日的读数与信号追加进 _信号快照.csv 并提交回 main（机器人每天一次提交，本地推送前先 pull --rebase）。
 #   · Claude 的定时任务：北京时间 21:00 前后读取上面那个页面，更新 Artifact，
 #     出现红点 / 空心红点 / 蓝点、或任一分项连续 5 日 > 90 时推送到手机。
 #
@@ -28,7 +29,7 @@ on:
         default: false
 
 permissions:
-  contents: write   # 只用来提交 _红点预登记.csv（有新登记时）
+  contents: write   # 只用来提交 _信号快照.csv（每个交易日一行）与 _红点预登记.csv（有新登记时）
   pages: write
   id-token: write
 
@@ -43,6 +44,8 @@ jobs:
     # 与本地 Mac 同一时区：预先登记表的「登记时间」、各脚本里的“今天”都按北京时间算
     env:
       TZ: Asia/Shanghai
+      # 每日信号快照只由这里写（单一写入方）；本地运行只读，免得两边各记一份互相冲突
+      ALT_SNAPSHOT: "1"
     outputs:
       built: ${{ steps.site.outputs.built }}
     steps:
@@ -138,31 +141,33 @@ jobs:
         with:
           path: _site
 
-      # 预先登记表「只追加、不改写」，必须跨运行保存，否则每次都会被当成第一次登记。
-      # 只在有新登记时才提交（红点事件很少，一年几次）。推送失败会让本次运行标红——
-      # 不再像另一个仓库那样静默吞掉失败；页面发布不受影响（deploy 不依赖这一步）。
-      - name: 保存预先登记表
+      # 信号快照与预先登记表都「只追加、不改写」，必须跨运行保存。
+      # 快照每个交易日一行（同一截止日重跑不追加），预先登记只在有新红点事件时才有新行。
+      # 推送失败会让本次运行标红；页面发布不受影响（deploy 不依赖这一步）。
+      - name: 保存信号快照与预先登记表
         run: |
-          F="_红点预登记.csv"
-          [ -f "$F" ] || { echo "没有 $F，跳过"; exit 0; }
-          git add -- "$F"
+          for F in "_信号快照.csv" "_红点预登记.csv"; do
+            [ -f "$F" ] && git add -- "$F"
+          done
           if git diff --cached --quiet; then
-            echo "预先登记表无新增"
+            echo "信号快照与预先登记表都无新增"
             exit 0
           fi
+          MSG="信号快照：$(python3 -c 'import json;print(json.load(open("data_alt.json",encoding="utf-8"))["as_of"])')"
+          git diff --cached --quiet -- "_红点预登记.csv" || MSG="$MSG；预先登记：新增红点事件"
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "预先登记：新增红点事件（$(date +%F)）"
+          git commit -m "$MSG"
           for i in 1 2 3; do
             if git pull --rebase --quiet origin main && git push origin HEAD:main; then
-              echo "已提交 $F"
+              echo "已提交：$MSG"
               exit 0
             fi
             git rebase --abort 2>/dev/null || true
             echo "推送失败，重试 $i"
             sleep $((i * 5))
           done
-          echo "::error::$F 推送失败：新登记只存在于本次运行里，下次运行会重新登记（登记时间会变）。"
+          echo "::error::推送失败：新记录只存在于本次运行里。快照漏掉的日子下次运行会用重算值补上（来源记「补记」）；预先登记会重新登记（登记时间会变）。"
           exit 1
 
       - name: 运行摘要
