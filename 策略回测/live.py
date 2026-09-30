@@ -4,7 +4,8 @@
     current(d, raw_dir) → {"as_of", "holdings": [{"sym", "weight"}], "cash", "state", "pick", ...}
 
 与回测完全同一份规则代码（strategy.build + momentum_switch.choose），只把数据换成生产的：
-  · 信号：页面当次算出的 data_alt.json 结构（红点 hot、黄点 tdc、蓝点 cold / cold_soft、TDC 读数），2017-10-18 起
+  · 信号：页面当次算出的 data_alt.json 结构（红点 hot、黄点 tdc、蓝点 cold / cold_soft、TDC 读数），2017-10-18 起；
+    每日信号快照（_信号快照.csv，2026-09-30 起）覆盖的日子改用快照
   · 价格：raw/ 里的 QQQ、SOXX（选品、波动率、熊市闸门）与 TQQQ、SOXL、SQQQ（是否可交易）
 t 日收盘后给出的持仓在 t+1 开盘执行，和回测口径一致。
 
@@ -51,27 +52,36 @@ class _Market:
         self.lev = pd.DataFrame({s: L for s, (_, L) in SYMS.items()}, index=self.idx)
 
 
-def _signals(d):
+def _signals(d, snap=None):
+    """snap：每日信号快照（make_alt_page.snap_signals），它覆盖的日子一律以快照为准——
+    快照记的是当时页面上显示的信号；页面上的历史每次都按今天的成分股名单重算，会被改写。"""
     s, f = d["series"], d["alerts"]["flags"]
     idx = pd.to_datetime(s["dates"])
     col = lambda v: pd.Series([np.nan if x is None else x for x in v], index=idx, dtype=float)
-    return pd.DataFrame({"red": col(f["hot"]).astype(bool), "red_ad": col(f["hot_ad"]).astype(bool),
-                         "blue": col(f["cold"]).astype(bool), "blue_soft": col(f["cold_soft"]).astype(bool),
-                         "yellow": col(f["tdc"]).astype(bool), "tdc": col(s["tdc"])})
+    S = pd.DataFrame({"red": col(f["hot"]).astype(bool), "red_ad": col(f["hot_ad"]).astype(bool),
+                      "blue": col(f["cold"]).astype(bool), "blue_soft": col(f["cold_soft"]).astype(bool),
+                      "yellow": col(f["tdc"]).astype(bool), "tdc": col(s["tdc"])})
+    if snap is not None:
+        snap = snap.reindex(S.index)
+        for c in S.columns:
+            m = snap[c].notna() if c in snap else None
+            if m is not None and m.any():
+                S.loc[m, c] = snap.loc[m, c].astype(float) if c == "tdc" else snap.loc[m, c].astype(bool)
+    return S
 
 
-def history(d, raw):
+def history(d, raw, snap=None):
     """整段目标权重（DataFrame，t 行 = t 日收盘后决定）与状态序列"""
     M = _Market(raw, d["as_of"])
-    P = ST.Prep(M, _signals(d))
+    P = ST.Prep(M, _signals(d, snap))
     ch = choose(M.idx, msig(M.C["QQQ"], M.C["SOXX"])[RULE[0]], *RULE[1:])
     W, st = ST.build(P, dict(STRATEGY, universe="choice", choice=ch, choice_u=["QQQ", "SOXX"]))
     W = pd.DataFrame(W, index=M.idx, columns=M.cols)
     return W, pd.Series(st, index=M.idx).map(ST.STATE_NAMES), pd.Series(ch, index=M.idx)
 
 
-def current(d, raw):
-    W, st, ch = history(d, raw)
+def current(d, raw, snap=None):
+    W, st, ch = history(d, raw, snap)
     t = W.index[-1]
     w = W.loc[t]
     hold = [{"sym": s, "weight": round(float(w[s]), 4)} for s in ("SOXL", "TQQQ", "SQQQ", "QQQ", "SOXX") if w[s] > 0.0005]

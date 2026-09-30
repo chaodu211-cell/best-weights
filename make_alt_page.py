@@ -79,6 +79,82 @@ def prereg(V, temp, A, log):
             "draws": A.PREREG_DRAWS, "rows": out_rows, "judge": judge}
 
 
+# —— 每日信号快照（2026-09-30 加）——
+# 页面上的历史读数每次都按"今天的成分股名单 + 今天的十年数据"从头重算：名单季度调整、数据起点后移都会改写
+# 历史红/蓝/黄点（实测：只换 3 只成分股，2018-08-27、28 的红点消失；起点后移一年，2022-01-20 的黄点推迟到 01-24）。
+# 快照每天只追加截止日那一行，记下"当时页面上显示的是什么"，之后怎么重算都不回头改。
+# 策略持仓的状态机（红点 30 日、黄点锁仓、蓝点 40 日）在快照覆盖的日子里一律用快照，更早的日子只能用重算值。
+# 只由 GitHub 每日流水线写（环境变量 ALT_SNAPSHOT=1）：单一写入方，本地运行只读，免得两边各记一份互相冲突。
+SNAP_CSV = os.path.join(BASE, "_信号快照.csv")
+SNAP_FLAGS = (("实心红点", "hot", "red"), ("空心红点", "hot_ad", "red_ad"), ("实心蓝点", "cold", "blue"),
+              ("空心蓝点", "cold_soft", "blue_soft"), ("黄点", "tdc", "yellow"))   # 列名 / 页面旗标 / live.py 信号名
+SNAP_COLS = (["日期", "来源", "红点温度", "红点门槛", "自适应门槛"] + [c for c, _, _ in SNAP_FLAGS]
+             + ["蓝点温度", "TDC", "VIX", "策略状态", "策略持仓", "记录时间", "代码版本"])
+
+
+def snap_load():
+    if not os.path.exists(SNAP_CSV):
+        return None
+    s = pd.read_csv(SNAP_CSV, dtype={"日期": str, "策略持仓": str, "代码版本": str})
+    return s.set_index(pd.to_datetime(s["日期"])) if len(s) else None
+
+
+def snap_signals(s):
+    """快照 → live.py 的信号列（red / red_ad / blue / blue_soft / yellow / tdc）；空格子为 NaN，不覆盖重算值"""
+    if s is None:
+        return None
+    out = pd.DataFrame({k: pd.to_numeric(s[c], errors="coerce") for c, _, k in SNAP_FLAGS}, index=s.index)
+    out["tdc"] = pd.to_numeric(s["TDC"], errors="coerce")
+    return out
+
+
+def snap_append(d, s):
+    """追加截止日一行；上次记录之后漏掉的交易日（流水线没跑、推送失败）用本次重算值补上，来源记"补记"。
+    已记过的日子一律不动。返回新增行数。"""
+    dates = pd.to_datetime(d["series"]["dates"])
+    S, F = d["series"], d["alerts"]["flags"]
+    last = s.index[-1] if s is not None else dates[-1] - pd.Timedelta(days=1)   # 第一次只记截止日
+    new_i = [i for i, t in enumerate(dates) if t > last]
+    if not new_i:
+        return 0
+    at = lambda key, i, src=S: (lambda v: "" if v is None else v)((src.get(key) or [None] * len(dates))[i])
+    flag = lambda key, i: ("" if F.get(key) is None else int(bool(F[key][i])))
+    st = d.get("strategy") or {}
+    now = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+    sha = os.environ.get("GITHUB_SHA", "")[:7]
+    rows = []
+    for i in new_i:
+        today = (i == len(dates) - 1)
+        rows.append([f"{dates[i]:%Y-%m-%d}", "当日" if today else "补记", at("temperature_sell", i),
+                     d.get("sell_threshold"), at("th_adaptive", i)]
+                    + [flag(k, i) for _, k, _ in SNAP_FLAGS]
+                    + [at("temperature_fast", i), at("tdc", i), at("vix", i),
+                       st.get("state", "") if today else "",
+                       "; ".join(f"{h['sym']} {h['weight']:.4f}" for h in st.get("holdings", [])) if today and st else "",
+                       now, sha])
+    if s is None and not os.path.exists(SNAP_CSV):
+        pd.DataFrame(columns=SNAP_COLS).to_csv(SNAP_CSV, index=False, encoding="utf-8")
+    pd.DataFrame(rows, columns=SNAP_COLS).to_csv(SNAP_CSV, mode="a", header=False, index=False, encoding="utf-8")
+    return len(rows)
+
+
+def snap_summary(d, s):
+    """快照范围，以及"今天重算"与快照不一致的地方（历史被改写的直接证据）"""
+    pos = {t: i for i, t in enumerate(pd.to_datetime(d["series"]["dates"]))}
+    diffs = []
+    for t, r in s.iterrows():
+        i = pos.get(t)
+        if i is None:
+            continue
+        for c, k, _ in SNAP_FLAGS:
+            f = d["alerts"]["flags"].get(k)
+            v = pd.to_numeric(r[c], errors="coerce")
+            if f is not None and pd.notna(v) and bool(v) != bool(f[i]):
+                diffs.append({"date": f"{t:%Y-%m-%d}", "sig": c, "snap": bool(v), "now": bool(f[i])})
+    return {"from": f"{s.index[0]:%Y-%m-%d}", "last": f"{s.index[-1]:%Y-%m-%d}", "n": int(len(s)),
+            "n_fill": int((s["来源"] == "补记").sum()), "n_diff": len(diffs), "diffs": diffs[-20:]}
+
+
 def _runs(pos, gap=1):
     out = []
     for i in pos:
@@ -375,13 +451,27 @@ def main():
     E.main()                       # 产出标准结构（不碰 data.json，OUT 已改向）
     d = json.load(open(out_json, encoding="utf-8"))
     d = patch(d, E, A, log=(a.raw is None))   # 只有生产数据才写预先登记表
+    # 长面板等非生产数据不读也不写快照（快照只对生产页面上显示过的信号成立）
+    snap = snap_load() if a.raw is None else None
     # —— 策略持仓（2026-09-28 加）：策略回测/live.py，规则与回测同一份代码；算不出来就不显示，不影响其余部分 ——
+    # 快照覆盖的日子用快照里的信号（2026-09-30 起）
     try:
         sys.path.insert(0, os.path.join(BASE, "策略回测"))
         import live
-        d["strategy"] = live.current(d, E.RAW)
+        d["strategy"] = live.current(d, E.RAW, snap=snap_signals(snap))
     except Exception as exc:
         print(f"  ! 策略持仓未计算：{exc}")
+    if a.raw is None and os.environ.get("ALT_SNAPSHOT") == "1":
+        n = snap_append(d, snap)
+        print(f"  信号快照：新增 {n} 行 → {os.path.basename(SNAP_CSV)}" if n else "  信号快照：截止日已记过，不追加")
+        snap = snap_load()
+    if snap is not None:
+        d["snapshot"] = snap_summary(d, snap)
+        sm = d["snapshot"]
+        print(f"  信号快照：{sm['from']} ~ {sm['last']} 共 {sm['n']} 天（补记 {sm['n_fill']}）  "
+              f"今天重算与快照不一致 {sm['n_diff']} 处"
+              + "".join(f"\n    {x['date']} {x['sig']}：快照{'亮' if x['snap'] else '不亮'}、重算{'亮' if x['now'] else '不亮'}"
+                        for x in sm["diffs"]))
     json.dump(d, open(out_json, "w", encoding="utf-8"), ensure_ascii=False)
 
     tpl = open(os.path.join(BASE, "alt_tpl.html"), encoding="utf-8").read()
