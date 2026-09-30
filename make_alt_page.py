@@ -29,6 +29,34 @@ TARGET = "QQQ"
 TARGET_LABEL = "纳斯达克100 · QQQ"
 
 
+# 页面显示起点（2026-09-30 起固定）：raw/ 接上了 2006 年起的长历史（hist_store.py），计算用全部历史——
+# TDC、自适应门槛这些长窗口指标在页面第一天就有完整回看期——显示仍从这一天开始，和接长历史之前的页面
+# 同一个起点（红点权重的标定窗口），页面上各项统计的口径不变。只对生产页面生效，--raw 时照旧显示全部。
+DISPLAY_FROM = "2017-10-18"
+
+
+def trim_display(d, start):
+    """把 engine 输出里所有与 series.dates 等长的列表截到 start 及以后"""
+    dates = d["series"]["dates"]
+    n = len(dates)
+    i0 = next((i for i, x in enumerate(dates) if x >= start), 0)
+    if i0 == 0:
+        return d
+
+    def walk(o):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if isinstance(v, list) and len(v) == n:
+                    o[k] = v[i0:]
+                else:
+                    walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+    walk(d)
+    return d
+
+
 PREREG_CSV = os.path.join(BASE, "_红点预登记.csv")
 PREREG_COLS = ["信号", "首日", "温度", "门槛", "登记时间"]
 
@@ -450,6 +478,8 @@ def main():
     E.OUT = out_json
     E.main()                       # 产出标准结构（不碰 data.json，OUT 已改向）
     d = json.load(open(out_json, encoding="utf-8"))
+    if a.raw is None:
+        d = trim_display(d, DISPLAY_FROM)
     d = patch(d, E, A, log=(a.raw is None))   # 只有生产数据才写预先登记表
     # 长面板等非生产数据不读也不写快照（快照只对生产页面上显示过的信号成立）
     snap = snap_load() if a.raw is None else None

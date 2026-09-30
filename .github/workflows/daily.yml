@@ -9,7 +9,8 @@ name: daily
 #   · Claude 的定时任务：北京时间 21:00 前后读取上面那个页面，更新 Artifact，
 #     出现红点 / 空心红点 / 蓝点、或任一分项连续 5 日 > 90 时推送到手机。
 #
-# raw/ 十年原始日线（约 42MB）不进 git，用 actions/cache 在两次运行之间保存。
+# raw/ 原始日线不进 git，用 actions/cache 在两次运行之间保存。数据源只给 10 年，更早的部分由 hist/（进 git）
+# 补回：缓存丢了也能从 hist/ 还原出 2004 年起的长历史（hist_store.py）。
 on:
   schedule:
     # 11:07 UTC = 北京 19:07 = 美东 07:07（夏令时）/ 06:07（冬令时），前一交易日收盘数据已齐。
@@ -29,7 +30,7 @@ on:
         default: false
 
 permissions:
-  contents: write   # 只用来提交 _信号快照.csv（每个交易日一行）与 _红点预登记.csv（有新登记时）
+  contents: write   # 只用来提交 _信号快照.csv（每个交易日一行）、_红点预登记.csv（有新登记时）、hist/（约每月一个文件）
   pages: write
   id-token: write
 
@@ -141,20 +142,22 @@ jobs:
         with:
           path: _site
 
-      # 信号快照与预先登记表都「只追加、不改写」，必须跨运行保存。
-      # 快照每个交易日一行（同一截止日重跑不追加），预先登记只在有新红点事件时才有新行。
+      # 信号快照、预先登记表、hist/ 长历史存档都「只追加、不改写」，必须跨运行保存。
+      # 快照每个交易日一行（同一截止日重跑不追加），预先登记只在有新红点事件时才有新行，
+      # hist/ 大约每月多一个月份文件（数据源 10 年窗口快滑过去的那个月，见 hist_store.py）。
       # 推送失败会让本次运行标红；页面发布不受影响（deploy 不依赖这一步）。
-      - name: 保存信号快照与预先登记表
+      - name: 保存信号快照、预先登记表与长历史存档
         run: |
-          for F in "_信号快照.csv" "_红点预登记.csv"; do
-            [ -f "$F" ] && git add -- "$F"
+          for F in "_信号快照.csv" "_红点预登记.csv" "hist"; do
+            [ -e "$F" ] && git add -- "$F"
           done
           if git diff --cached --quiet; then
-            echo "信号快照与预先登记表都无新增"
+            echo "信号快照、预先登记表、hist/ 都无新增"
             exit 0
           fi
           MSG="信号快照：$(python3 -c 'import json;print(json.load(open("data_alt.json",encoding="utf-8"))["as_of"])')"
           git diff --cached --quiet -- "_红点预登记.csv" || MSG="$MSG；预先登记：新增红点事件"
+          git diff --cached --quiet -- "hist" || MSG="$MSG；hist/ 新存档月份"
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "$MSG"

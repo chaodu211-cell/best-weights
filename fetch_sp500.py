@@ -18,6 +18,7 @@
 import argparse, json, os, re, ssl, sys, threading, time
 import urllib.error, urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import hist_store as H   # raw/ 只增不减 + hist/ 长历史存档（2026-09-30）
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 RAW = os.path.join(BASE, "raw")
@@ -256,7 +257,7 @@ def main():
     mode = f"增量 {INC_RANGE}（自动补全量）" if inc else f"全量 {a.range}"
     print(f"② 拉取 {len(targets)} 个标的 × {mode} 日线，并发 {a.workers}…")
     ok, fail, t0 = [], [], time.time()
-    fulls = 0
+    fulls = ext = 0
     with ThreadPoolExecutor(max_workers=a.workers) as ex:
         if inc:
             futs = {ex.submit(fetch_one_incremental, s, e): s for s, e in targets}
@@ -270,6 +271,9 @@ def main():
             else:
                 sym, rows, err = res
             if rows:
+                # 数据源只给 10 年：写盘前把本地更早的行、hist/ 存档接回去，起点不再随全量重下往后挪
+                rows, n_ext = H.extend(sym, rows, _read_local(sym))
+                ext += n_ext > 0
                 with open(os.path.join(RAW, f"{sym}.csv"), "w") as fh:
                     fh.write("\n".join(",".join(r) for r in rows) + "\n")
                 ok.append((sym, len(rows)))
@@ -280,6 +284,12 @@ def main():
                 print(f"   {n}/{len(targets)}  成功 {len(ok)}  失败 {len(fail)}{extra}  {time.time()-t0:.0f}s")
     if not inc and not a.limit:
         json.dump({"last_full": time.strftime("%Y-%m-%d")}, open(state_p, "w"))
+    if ext:
+        print(f"   {ext} 个标的往前接上了本地旧行或 hist/ 存档（数据源只给 10 年）")
+    if not a.limit:
+        new_m = H.archive(RAW)
+        if new_m:
+            print(f"   hist/ 新存档 {len(new_m)} 个月份：{new_m[0]} ~ {new_m[-1]}")
 
     okset = {s for s, _ in ok}
     sectors = {s: v for s, v in uni.items() if s in okset}
