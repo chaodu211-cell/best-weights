@@ -37,6 +37,7 @@
   · 杠杆温度权重 2/9 → 3/9，且内部比例 3:1 → 1:1
 """
 import json
+import os
 import numpy as np
 import pandas as pd
 import engine as E
@@ -46,6 +47,13 @@ FWD = 30
 
 # 上涨拥挤度内部：市值跑赢等权 : 宽度恶化 : 贴近峰值
 ALT_LEGS = (1.0, 0.0, 0.0)
+# 「市值跑赢等权」的等权一侧：真实等权 ETF 的复权价（2026-10-01 起）。原先用今天的 503 只成分股自建、
+# 回填全部历史，有幸存者偏差（2005-2026 年化 16.4%，RSP 只有 10.0%），成分股每次调整还会改写历史读数。
+# 同口径（63 日、下跌市记 50）下这个因子读数 ≥90 之后 30 日 QQQ 的热端边际（2008-16 / 2017-26）：
+# 自建 −1.17 / −1.13pp，RSP −2.61 / −2.34pp，官方 ^SP500EW −2.37 / −2.62pp。
+# 取 RSP 而不是 ^SP500EW：效果相同，RSP 2003 年起就有、与 SPY 同为复权（含分红）口径，且走同一个数据源。
+EW_SYM = "RSP"
+RAW_HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "raw")
 # 杠杆温度内部：多空比 : 交易强度（leverage.py 锁死的是 3:1，这里按扫描结果取 1:1）
 # 2026-09-30 起两项的原始量并入「正股成交额前十」的单股杠杆 ETF，之前的读数不动——见 lev_single()、single_lev.py；
 # 蓝点用的杠杆多空比同日起也换成同一口径（blue_lev_splice）
@@ -85,16 +93,19 @@ LEV_INNER = (1.0, 1.0)
 ALT_W = {"narrow": 1.0, "top2": 2.0, "lev": 3.0, "vix_abs": 2.0, "topshare": 1.0}
 # 门槛：训练窗内对齐到 66 天（与生产红点同频）。加门闸与不加门闸的最优门槛都是 81.7。
 # 改权重必须同时重标门槛——2026-09-20 减半时重标到 81.6，回退时一并改回 81.7。
-ALT_TH = 81.7
+# 2026-10-01 等权一侧换成 RSP（EW_SYM）后重标，训练窗 2017-10-18~2026-09-30：连 3 日温度第 65~67 高并列 82.569，
+# 恰好 66 天取不到，取最接近的 82.5（67 天/8 段，与换源前 81.7 的 67 天同频）；82.6 只剩 64 天。
+ALT_TH = 82.5
 ALT_PERSIST = 3
 
 # —— 红点有效性检验（2026-09-24 加，只加显示与一种并列信号，不改上面的红点）——
 # 起因：放到 2007-2016 长面板上，81.7 十年只亮 2 天。原因是四个滚动分位因子把原始值的
 # **趋势方向**变成读数高低：TOP2、杠杆交易强度的原始值 2010-16 下降、2017 后上升，
 # 温度基数因此差 6.7 分，因子间相关 0.02 对 0.21。固定门槛在另一个时代就够不着。
-# 设计触发频率：标定窗口（2017-10-18~2026-09-18）生产数据上红点占交易日的比例 65/2241。
-# 它是"设计值"，定下后不随数据更新，拿来和实际触发频率比。
-ALT_DESIGN_RATE = 65 / 2241
+# 设计触发频率：标定窗口生产数据上红点占交易日的比例。它是"设计值"，定下后不随数据更新，只在重标门槛时
+# 跟着重定，拿来和实际触发频率比。2026-09-18 标定（2017-10-18~2026-09-18）为 65/2241；
+# 2026-10-01 换 RSP 重标（~2026-09-30）为 67/2249。
+ALT_DESIGN_RATE = 67 / 2249
 # 近 2 年实际触发频率：慢诊断，回答"红点还适不适合当下这个时代"，不预测近期会不会亮。
 # （试过"过去一年温度第 97 分位 < 81.7 就判亮不了"：之后 63 日内仍有 10% 会亮，
 #   2016-12 以来 9 次红点里 5 次恰恰从这个状态里冒出来——单看一年说明不了什么。）
@@ -205,6 +216,25 @@ def blue_lev_splice(adj_like, dirs, ratio, fast):
     return out
 
 
+def equal_weight(idx):
+    """等权一侧（EW_SYM 的复权收盘）。分析脚本用的长面板（~/us2/raw_long）里没有它，就从本仓库 raw/ 取——
+    它是外部 ETF，与用哪套成分股面板无关。取不到返回 None。"""
+    d = E.load(EW_SYM)
+    if d is None and os.path.abspath(E.RAW) != RAW_HERE:
+        saved, E.RAW = E.RAW, RAW_HERE
+        try:
+            d = E.load(EW_SYM)
+        finally:
+            E.RAW = saved
+    return d["close"].reindex(idx) if d is not None else None
+
+
+def cap_vs_equal(cw, idx):
+    """市值跑赢等权：cw（SPY 复权收盘，与 idx 同索引）近 NT_WIN 日相对等权一侧的超额，小数。等权缺失返回 None。"""
+    eq = equal_weight(idx)
+    return None if eq is None else (cw / cw.shift(E.NT_WIN)) / (eq / eq.shift(E.NT_WIN)) - 1.0
+
+
 def alt_inputs(rawdf, adj, lev_pct, spy, idx):
     """返回替代红点的五个分项（都是 0-100，与主口径同尺）。
 
@@ -217,10 +247,8 @@ def alt_inputs(rawdf, adj, lev_pct, spy, idx):
     out = {}
 
     # 上涨拥挤度：内部只剩"市值跑赢等权"，但保留上涨市门闸与下跌市填 50 的语义
-    if cw is not None and nq is not None:
-        px = pd.DataFrame({t: d["close"] for t, d in E.load_many(E.STOCKS).items()}).reindex(idx)
-        eq = (1.0 + px.pct_change().mean(axis=1).fillna(0)).cumprod()
-        gap = (cw / cw.shift(E.NT_WIN)) / (eq / eq.shift(E.NT_WIN)) - 1.0
+    gap = cap_vs_equal(cw, idx) if cw is not None else None
+    if gap is not None and nq is not None:
         dd = (nq / nq.cummax() - 1.0) * 100.0
         near = ((dd + E.NT_DD) / E.NT_DD * 100.0).clip(0, 100)
         brd = E.rolling_pct(-(rawdf["ma20"] - rawdf["ma20"].shift(E.NT_WIN)))

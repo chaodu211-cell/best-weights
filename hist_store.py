@@ -18,6 +18,8 @@
   涨跌幅不随之后的复权改变，拼接时从已知的最早一天沿 next 往回推，就能还原出与当前刻度一致的复权价。
   原始收盘价与成交量（engine 只用二者之积＝成交额）本来就不随复权变。
 每个月份文件只写一次，之后不改。
+后加入的标的，数据源窗口以前的历史另存一个一次性回填文件（同样格式，文件名不是月份，load() 照常读入）：
+  RSP_backfill_2004-2017.csv.gz（2026-10-01，Yahoo 复权价，与 stockanalysis 重叠十年日收益最大差 2bp）。
 
     python3 hist_store.py          # 看存档覆盖情况
 """
@@ -139,5 +141,6 @@ if __name__ == "__main__":
     if not fs:
         sys.exit("hist/ 还没有存档")
     size = sum(os.path.getsize(os.path.join(HIST, f)) for f in fs)
-    print(f"hist/：{len(fs)} 个月份（{fs[0][:7]} ~ {fs[-1][:7]}），{len(A)} 个标的，"
+    ms = [f[:7] for f in fs if f[:4].isdigit()]
+    print(f"hist/：{len(ms)} 个月份（{ms[0]} ~ {ms[-1]}）+ {len(fs) - len(ms)} 个回填文件，{len(A)} 个标的，"
           f"{sum(len(v) for v in A.values()):,} 行，{size / 1e6:.1f} MB")

@@ -217,7 +217,7 @@ def patch(d, E, A, log=False):
     parts = A.alt_inputs(rawdf, adj, lev_pct, spy, rawdf.index)
     temp_alt = A.alt_temperature(parts)
     if temp_alt is None:
-        sys.exit(f"替代红点温度算不出来：分项缺失（检查 {TARGET} / VIX / 杠杆ETF 是否齐全）")
+        sys.exit(f"替代红点温度算不出来：分项缺失（检查 {TARGET} / {A.EW_SYM} / VIX / 杠杆ETF 是否齐全）")
     ta = temp_alt.reindex(dates)
     # 蓝点用的当日口径分项（换手率/上涨占比/杠杆多空比取未平滑值），与生产完全一致
     rf = rawdf.copy()
@@ -396,12 +396,14 @@ def patch(d, E, A, log=False):
                 f"其中<b>杠杆温度</b>内部按「多空比 : 交易强度 = {li:g} : {lj:g}」合成"
                 f"（不是 leverage.py 的 3:1，实测这一处值 2.65pp）；"
                 f"<b>VIX</b>用固定锚点 {'/'.join(f'{x:g}' for x in A.VIX_ANCHORS)} 映射，不是滚动分位；"
-                f"<b>市值加权跑赢等权</b>保留「只在上涨市成立、下跌市记中性 50」的语义。"
+                f"<b>市值加权跑赢等权</b>保留「只在上涨市成立、下跌市记中性 50」的语义；"
+                f"等权一侧 2026-10-01 起用真实等权 ETF {A.EW_SYM}（原为当前成分股自建篮子，有幸存者偏差），"
+                f"门槛随之按同频重标为 {A.ALT_TH:g}。"
                 f"权重按前瞻 {H} 个交易日、以 {TARGET} 为标的标定。"
                 f"站上MA20、换手率、宽度恶化、贴近峰值四项扫出来的权重都是 0，未参与。"
                 + (f"<b>{lev_single['from']} 起</b>杠杆温度并入正股成交额前 {lev_single['top_n']} 只股票"
                    f"（没有杠杆 ETF 的顺延）的全部单股杠杆 ETF：做多的加进做多、做空的加进做空；"
-                   f"此前的读数原样保留，之后的分位与同口径的过去 252 日比。门槛 {A.ALT_TH:g} 未重标。"
+                   f"此前的读数原样保留，之后的分位与同口径的过去 252 日比；这一处没有单独重标门槛。"
                    if lev_single else ""))
         elif r["key"] == "cold":
             r["name"] = "蓝点预警（替代权重）"
@@ -426,12 +428,15 @@ def patch(d, E, A, log=False):
 
     # —— ③ 按实际计算重建分项面板 ——
     raw_pct = lambda c: (rawdf[c].reindex(dates) if c in rawdf.columns else None)
+    # 市值跑赢等权的原始值与红点读数同源（SPY 对 RSP），不用 engine 的 _narrow_gap（那是自建等权篮子）
+    ew_gap = A.cap_vs_equal(spy["close"].reindex(rawdf.index), rawdf.index)
+    ew_gap = None if ew_gap is None else (ew_gap * 100.0).reindex(dates)
     vix_s = E.load_vix(dates)
     rows = [
         ("narrow", "市值加权跑赢等权", "指数靠大票撑着的程度",
          f"红点 {pc['narrow']:.0f}%", parts["narrow"],
-         (lambda: (lambda g: "—" if g is None else f"{g:+.2f}%")(num(raw_pct('_narrow_gap').iloc[-1], 2)))(),
-         f"SPY 近 {E.NT_WIN} 日相对等权组合的超额；下跌市记中性 50"),
+         (lambda: (lambda g: "—" if g is None else f"{g:+.2f}%")(None if ew_gap is None else num(ew_gap.iloc[-1], 2)))(),
+         f"SPY 近 {E.NT_WIN} 日相对等权 ETF（{A.EW_SYM}）的超额；下跌市记中性 50"),
         ("top2", "TOP2行业成交额占比", "资金抱团度",
          f"红点 {pc['top2']:.0f}% · 蓝点 {bpc['top2']:.0f}%", adj["top2"],
          f"{num(rawdf['top2'].reindex(dates).iloc[-1])}%", "当日占比（红蓝两条温度共用）"),
@@ -468,7 +473,7 @@ def patch(d, E, A, log=False):
     lr = lev_pct["ratio"].reindex(dates).values
     lt = lev_pct["intensity"].reindex(dates).values
     raw_by_key = {
-        "narrow":   fmt(raw_pct("_narrow_gap"), lambda v: f"{v:+.2f}%"),
+        "narrow":   fmt(ew_gap, lambda v: f"{v:+.2f}%"),
         "top2":     fmt(rawdf["top2"], lambda v: f"{v:.1f}%"),
         "lev":      [None if not (np.isfinite(a) and np.isfinite(b))
                      else f"多空比 {a:.0f} · 强度 {b:.0f}" for a, b in zip(lr, lt)],
