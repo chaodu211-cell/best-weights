@@ -319,7 +319,7 @@ table.ext .r{white-space:nowrap;font-size:12.5px}
           <li>ERP 分位取反向 <code>100 − pct</code>，使其与其他指标方向一致（高值＝情绪热）。</li>
           <li><strong style="color:var(--ink)">活跃度指标按市场方向定向</strong>：换手率与杠杆资金对恐慌和狂热同样敏感，方向不可知。对<em style="font-style:normal;color:var(--ink)">高于常态</em>的部分乘以方向系数 <code>d = tanh(r₂₀ / 1.5σ)</code>；低于常态的部分记为中性 50。</li>
           <li>杠杆多空比、TOP2抱团、站上MA20、风险溢价四项分位<strong style="color:var(--ink)">等权平均</strong>（各 25%），得到<strong style="color:var(--ink)">蓝点温度</strong>；蓝点看它的当日不平滑口径。相比原口径删掉了换手率与上涨个股占比，理由见预警卡片。</li>
-          <li>另按 <code>TOP2抱团×2 · 杠杆温度×2 · 上涨拥挤度×3 · 站上MA20×1 · 换手率×1</code> 加权合成<strong style="color:var(--ink)">红点温度</strong>（页面顶部显示的就是它，红点据此触发）。</li>
+          <li>另按 <code id="sellw"></code> 加权合成<strong style="color:var(--ink)">红点温度</strong>（页面顶部显示的就是它，红点据此触发）。</li>
           <li>按 <span id="bandtxt"></span> 划分五个情绪区间。</li>
         </ol>
       </div>
@@ -374,17 +374,19 @@ $("meta").innerHTML = [
 
 /* ---- hero ---- */
 /* 页面上只有两个温度：
-     红点温度 = TOP2×2 + 杠杆温度×2 + 上涨拥挤度×3 + MA20×1 + 换手率×1（加权分位），红点据此触发；
+     红点温度 = 按 D.sell_weights 加权的分位（最优拟合的五个因子），红点据此触发；
      蓝点温度 = 四项等权（杠杆多空比/TOP2/站上MA20/ERP 各 25%），蓝点看它的当日不平滑口径。
    主显示是红点温度；拿不到时（历史前段上涨拥挤度还没预热完）退回显示蓝点温度。 */
 const HEROV = D.temperature_sell != null ? D.temperature_sell : D.temperature;
+// 门槛照引擎原值显示（82.5 不能显示成 83），整数门槛不带小数
+const fmtTh = v => String(+v.toFixed(1));
 const HEROS = (D.series.temperature_sell && D.series.temperature_sell.some(v => v != null))
   ? D.series.temperature_sell : D.series.temperature;
 const cur = regOf(HEROV);
 $("temp").textContent = HEROV.toFixed(1);
 $("temp").style.color = HEROV > (D.sell_threshold || 75) ? "#CE5A4E" : cur.hex;
 $("regime").innerHTML = `<span class="dot" style="background:${cur.hex}"></span>${cur.name}`
-  + `<span style="color:var(--ink3)">　红点门槛 ${(D.sell_threshold || 75).toFixed(0)}</span>`;
+  + `<span style="color:var(--ink3)">　红点门槛 ${fmtTh(D.sell_threshold || 75)}</span>`;
 const S = HEROS, N = S.length;
 const vAt = k => { for (let i = N-1-k; i >= 0; i--) if (S[i] != null) return S[i]; return null; };
 const d5 = vAt(5), d20 = vAt(20);
@@ -403,6 +405,13 @@ $("delta").textContent = [
 $("band").innerHTML = R.map(r => `<div style="background:${r.hex};opacity:${r===cur?1:.28}"></div>`).join("");
 if ($("ndx-h2")) $("ndx-h2").textContent = (D.ndx_label || "标的") + " 与预警点位";
 if ($("bandtxt")) $("bandtxt").textContent = B.map(x => x.toFixed(0)).join(" / ");
+/* 红点权重从引擎下发的 sell_weights 现算，按占比从大到小；模板里写死的文字会和实际权重对不上 */
+if ($("sellw") && D.sell_weights){
+  const sw = D.sell_weights, lab = D.sell_labels || {};
+  const tot = Object.values(sw).reduce((a, b) => a + b, 0);
+  $("sellw").textContent = Object.keys(sw).filter(k => sw[k] > 0).sort((a, b) => sw[b] - sw[a])
+    .map(k => `${lab[k] || k} ${Math.round(sw[k] / tot * 100)}%`).join(" · ");
+}
 $("band-axis").innerHTML = R.map((r, i) =>
   `<span>${i === 0 ? 0 : B[i-1]}–${i === R.length-1 ? 100 : B[i]}</span>`).join("");
 /* 色带是 5 等宽格，但区间边界不等宽（28/46/61/76），
@@ -958,7 +967,7 @@ function segments(f){
                         : "不处于实际利率重估期，蓝点按实心计"}`);
   // 趋势只作事实陈述：熊市反弹预警已于 2026-09 停用（样本前检验里符号翻转，
   // 见 engine.py BEAR_TH 上方），这里不再说"某某预警已启用"。
-  const redTxt = D.sell_threshold == null ? `蓝点温度 > ${B[3]}` : `红点温度 > ${D.sell_threshold.toFixed(0)}`;
+  const redTxt = D.sell_threshold == null ? `蓝点温度 > ${B[3]}` : `红点温度 > ${fmtTh(D.sell_threshold)}`;
   if (BR) bits.push((BR.now
     ? `<b style="color:#CE5A4E">纳指位于下行的 ${BR.ma} 日均线之下（确认的下行趋势）</b>`
     : `纳指未跌破下行的 ${BR.ma} 日均线`) + ` · 红点看${redTxt}`);

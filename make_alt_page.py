@@ -235,6 +235,7 @@ def patch(d, E, A, log=False):
     d["series"]["temperature_sell"] = ser(temp_alt)
     d["sell_threshold"] = A.ALT_TH
     d["sell_weights"] = {k: v for k, v in A.ALT_W.items()}
+    d["sell_labels"] = {k: A.LABELS.get(k, k) for k in A.ALT_W}
     d["alt"] = {"legs": list(A.ALT_LEGS), "lev_inner": list(A.LEV_INNER),
                 "vix_anchors": list(A.VIX_ANCHORS), "persist": A.ALT_PERSIST,
                 "fwd": H, "target": TARGET, "lev_single": lev_single}
