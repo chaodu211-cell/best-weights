@@ -345,6 +345,18 @@ def patch(d, E, A, log=False):
         "ic_hist": [{"m": f"{t:%Y-%m}", "v": round(float(v), 3)} for t, v in icm.items()],
         "prereg": prereg(V, temp_alt, A, log),
     }
+    # —— 热端表现（2026-10-01 起替代网页上的滚动 IC）：来历见 alt_engine 的 HOT_* 注释 ——
+    HE = A.hot_end(temp_alt, tgt["close"].reindex(temp_alt.index))
+    if len(HE):
+        d["series"]["red_hot_edge"] = [num(v, 2) for v in
+                                       HE["edge"].astype(float).reindex(dates, method="ffill").values]
+        r_ = HE.iloc[-1]
+        d["validity"]["hot"] = {
+            "lvl": A.HOT_LVL, "win": A.HOT_WIN, "min": A.HOT_MIN, "fwd": A.FWD,
+            "month": f"{HE.index[-1]:%Y-%m}", "end": f"{r_['end']:%Y-%m-%d}", "n": int(r_["n"]),
+            "edge": num(float(r_["edge"]), 2), "hot_mean": num(float(r_["hot_mean"]), 2),
+            "hot_neg": num(float(r_["hot_neg"])), "all_mean": num(float(r_["all_mean"]), 2),
+            "all_neg": num(float(r_["all_neg"]))}
     # —— 集中度状态提示（2026-09-28）：只作提示，不改红点；规则与来历见 alt_engine 的 CONC_* 注释 ——
     conc = {}
     for key, col, nm, reading in (("top2", "top2", "TOP2", adj["top2"]),
@@ -551,8 +563,9 @@ def main():
         pj = v["prereg"]["judge"]
         print(f"有效性：近 2 年触发 {v['rate_now']}%（设计 {v['design_rate']}%）  "
               f"自适应门槛 {v['th_ad_now']}（固定 {v['th_fixed']:g}）  "
-              f"滚动 IC {v['ic_now']}（按 {v['ic_month']}，样本止于 {v['ic_window_end']}）  "
-              f"预先登记 自 {v['prereg']['from']}："
+              + (lambda h: f"热端表现 {h['edge']}pp（温度≥{h['lvl']:g} 共 {h['n']} 天，样本止于 {h['end']}）  "
+                 if h else "热端表现 无读数  ")(v.get("hot"))
+              + f"预先登记 自 {v['prereg']['from']}："
               + "；".join(f"{k} {j['n']} 次/{j['verdict']}" for k, j in pj.items()))
         for c in (v.get("conc") or {}).get("items", {}).values():
             print(f"集中度状态 {c['factor']}：{c['state']}（近一年 {c['up']}% 的日子高于年度中位数，"

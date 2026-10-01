@@ -284,8 +284,8 @@ table.ext .r{white-space:nowrap;font-size:12.5px}
     <h2>红点有效性</h2>
     <p class="sub" id="valid-sub"></p>
     <div class="vtiles" id="vtiles"></div>
-    <div class="chart-box" style="margin-top:12px"><svg id="cVI" role="img" aria-label="滚动 IC"></svg>
-      <p class="sub vcap" id="cap-vi"></p></div>
+    <div class="chart-box" style="margin-top:12px"><svg id="cVH" role="img" aria-label="热端表现"></svg>
+      <p class="sub vcap" id="cap-vh"></p></div>
     <div class="chart-box" style="margin-top:8px"><svg id="cVC" role="img" aria-label="集中度上升占比"></svg>
       <p class="sub vcap" id="cap-vc"></p></div>
     <h3 class="vh3">预先登记</h3>
@@ -771,8 +771,11 @@ function drawValid(){
   if (!VV) return;
   // 2026-10-01 按用户要求去掉「温度与两条门槛」「近 2 年触发频率」两张小图，对应数字卡片保留
   const S = D.series;
-  vChart("cVI", 120, -0.8, 0.4, [[S.red_ic, "#8FA6BD", 1.5]], [[0, "#D19A3E", "0：不含方向信息"]], [],
-    z => z.toFixed(1));
+  // 热端表现（2026-10-01 起替代滚动 IC）
+  const hv = (S.red_hot_edge || []).filter(z => z != null);
+  if (hv.length) vChart("cVH", 120, Math.min(-6, Math.floor(Math.min(...hv))), Math.max(4, Math.ceil(Math.max(...hv))),
+    [[S.red_hot_edge, "#8FA6BD", 1.5]], [[0, "#D19A3E", "0：热端与平时无异"]], [],
+    z => (z > 0 ? "+" : "") + z.toFixed(0) + "pp");
   if (VV.conc) vChart("cVC", 120, 0, 100, [[S.conc_top2_up, "#8FA6BD", 1.5], [S.conc_topshare_up, "#8FA6BD", 1, "4 3"]],
     [[VV.conc.up_hi, "#D19A3E", `趋势上升 ${VV.conc.up_hi}%`], [VV.conc.up_lo, "#5FA86B", `回落 ${VV.conc.up_lo}%`, "2 3"]],
     [], z => z.toFixed(0) + "%");
@@ -786,11 +789,13 @@ function drawValid(){
   const ratio = VV.rate_now == null ? null : VV.rate_now / VV.design_rate;
   const rateMsg = ratio == null ? "近 2 年数据不足" : ratio < 0.5 ? "明显低于设计：固定门槛可能正在「失声」，参考空心红点"
                 : ratio > 2 ? "明显高于设计：红点可能过于频繁" : "与设计相当";
-  const icMsg = VV.ic_now == null ? "数据不足" : VV.ic_now >= 0 ? "≥ 0：温度眼下不含「高了之后跌」的信息"
-              : VV.ic_now > -0.1 ? "接近 0：信息偏弱" : "为负：温度高之后倾向于跌";
+  const HT = VV.hot || null;
+  const hotMsg = !HT ? "数据不足" : HT.edge == null ? `热端只有 ${HT.n} 天（少于 ${HT.min} 天），样本不足`
+               : HT.edge <= -1 ? "热了之后偏弱：红点的方向仍然成立"
+               : HT.edge < 1 ? "热端和平时差不多：热端的信息偏弱" : "热了之后反而更强：需要警惕";
   const jtxt = k => { const j = J[k]; return `${k} ${j.n_known}/${j.need} · ${j.verdict}` +
     (j.p != null ? `（p = ${j.p.toFixed(3)}）` : ""); };
-  $("valid-sub").innerHTML = `回答两件不同的事：<b>红点还适不适合当下这个时代</b>（近 2 年触发频率、滚动 IC，都是慢变量），
+  $("valid-sub").innerHTML = `回答两件不同的事：<b>红点还适不适合当下这个时代</b>（近 2 年触发频率、热端表现，都是慢变量），
     以及<b>红点亮了之后准不准</b>（预先登记，只看起算日之后的新事件）。另加一种<b>自适应门槛</b>的空心红点与实心红点并列，
     防止温度基数整体漂移后固定门槛整段失声。<b>集中度状态</b>提示 TOP2、前2% 这两个滚动分位因子的读数该怎么解读
     （集中度一路上升时读数容易长期偏高，高位走平时读数不高不代表不拥挤）。小图都与上方纳指图同一时间轴。`;
@@ -800,8 +805,10 @@ function drawValid(){
     ["自适应门槛（空心红点）", VV.th_ad_now == null ? "--" : VV.th_ad_now.toFixed(1),
      `固定门槛 ${VV.th_fixed}` + (VV.th_ad_now == null ? "" : ` · 差 ${(VV.th_ad_now - VV.th_fixed).toFixed(1)}`),
      `前一日及以前 ${VV.ad_win / 252} 年连 3 日温度的同频分位`, false],
-    ["滚动 IC（温度 vs 后 30 日）", VV.ic_now == null ? "--" : VV.ic_now.toFixed(3),
-     `每月更新（${VV.ic_month || "--"} 按当月最新一日）· 样本止于 ${VV.ic_window_end || "--"}`, icMsg, VV.ic_now != null && VV.ic_now > -0.1],
+    [`热端表现（温度 ≥ ${HT ? HT.lvl : 70}，过去一年）`, !HT || HT.edge == null ? "--" : (HT.edge > 0 ? "+" : "") + HT.edge.toFixed(1) + "pp",
+     !HT ? "--" : `热端 ${HT.n} 天，之后 ${HT.fwd} 日 ${fz(HT.hot_mean, 1)}%（${fz(HT.hot_neg)}% 为负）；` +
+       `同期全部日子 ${fz(HT.all_mean, 1)}%（${fz(HT.all_neg)}% 为负）· 样本止于 ${HT.end}`,
+     hotMsg, !HT || HT.edge == null || HT.edge > -1],
     ["预先登记", `${J["固定门槛"].n} / ${J["自适应门槛"].n}`, `实心 / 空心 · 自 ${P.from} 起`,
      jtxt("固定门槛") + "<br>" + jtxt("自适应门槛"), false]
   ].concat(CI.top2 ? [["集中度状态（TOP2）", CI.top2.state,
@@ -809,9 +816,11 @@ function drawValid(){
      `（${CC.hist_from} 以来第 ${fz(CI.top2.lvl)} 分位）· 今日读数 ${fz(CI.top2.reading)}`,
      CI.top2.msg + (CI.topshare ? `<br>前2%：${CI.topshare.state}（${fz(CI.topshare.up)}% · 第 ${fz(CI.topshare.lvl)} 分位 · 读数 ${fz(CI.topshare.reading)}）` : ""),
      CI.top2.state_key !== "normal"]] : []).map(([t, b, e1, e2, w]) => `<div class="vtile"><i>${t}</i><b>${b}</b><em>${e1}</em><em class="${w ? "warn" : ""}">${e2}</em></div>`).join("");
-  $("cap-vi").innerHTML = `红点温度与之后 ${VV.fwd} 个交易日 QQQ 收益的 Spearman 相关，${VV.ic_win} 日窗口，每月更新一次（当月按最新一日）；
-    t 日只用到 t−${VV.fwd} 为止的样本。负值＝温度高之后跌。长面板上 2010-16 平均 −0.20、2018-26 平均 −0.30。
-    它量的是整个分布（也包括"温度低之后涨"那一端），不等于顶部预警的质量；连续一两年贴近 0 或转正才值得警惕。`;
+  if (HT) $("cap-vh").innerHTML = `<b>热端表现</b>：过去 ${HT.win} 个交易日里温度 ≥ ${HT.lvl} 的日子，之后 ${HT.fwd} 个交易日 QQQ 收益
+    减同期全部日子的均值（pp），每月更新一次（当月按最新一日）；t 日只用到 t−${HT.fwd} 为止的样本，热端少于 ${HT.min} 天不出数。
+    负值＝热了之后偏弱，红点的方向成立。2026-10-01 起替代原来的滚动 IC：IC 量的是整个分布的单调关系，冷端失灵就能把它拉到 0 附近
+    （2026-02~03 温度很低、市场却继续下跌），而红点只用最热的一小段。参照：2018-26 年 94% 的月份为负、中位 −2.4pp；
+    2008-16 年中位 −0.9pp。热端天数少时读数噪声大。`;
   if (CC) $("cap-vc").innerHTML = `集中度的<b>上升占比</b>：近一年里原始值高于自己过去一年中位数的天数占比（实线 TOP2，虚线前2%）。
     ≥ ${CC.up_hi}% 为<b>趋势上升期</b>（读数容易长期偏高），≤ ${CC.up_lo}% 为<b>回落期</b>；介于两者之间时，原始值在
     ${CC.hist_from} 以来第 ${CC.lvl_hi} 分位以上算<b>高位走平期</b>，否则正常。今日读数 ≥ ${CC.read_hi} 算冒尖——

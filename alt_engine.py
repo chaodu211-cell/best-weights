@@ -107,6 +107,14 @@ AD_WIN, AD_MINP = 756, 504
 # t−FWD 为止的样本（之后的收益那天还不知道）。负值＝温度高之后跌。长面板上 2010-16
 # 平均 −0.20、2018-26 平均 −0.30；它量的是整个分布（含"温度低之后涨"那一端），不等于顶部预警质量。
 IC_WIN = 252
+# 热端表现（2026-10-01 起替代网页上的滚动 IC）：IC 量的是整个分布的单调关系，红点却只用最热的一小段。
+# 2026-09 的 IC 只有 −0.08，拆开看是冷端失灵——温度 <40 的日子之后 64% 还在跌（2026-02~03 一边跌一边冷），
+# 热端照常（>81.7 的 9 天之后 89% 为负）。所以网页改看热端：过去 HOT_WIN 日里温度 ≥ HOT_LVL 的日子，
+# 之后 FWD 日收益减同期全部日子的均值（pp）；窗口与 IC 相同（止于 t−FWD，月末更新），热端少于 HOT_MIN 天不出数。
+# 70 取的是分档收益开始明显走弱的位置（2018-26：60-70 +2.7%、70-81.7 +1.1%、>81.7 −4.8%），没有按结果挑。
+# 参照：生产数据 2018-26 年 94% 的月份为负、中位 −2.4pp；长面板 2008-16 年 68% 为负、中位 −0.9pp，
+# 但那段 41% 的月份热端不足 10 天。
+HOT_LVL, HOT_WIN, HOT_MIN = 70.0, 252, 10
 # 预先登记：起算日之后首日出现的红点事件写进 _红点预登记.csv（只追加、不改写），
 # 按事先定好的标准评判——这是唯一不受标定过拟合影响的检验。标准写在 说明.md。
 PREREG_FROM = "2026-09-25"
@@ -382,3 +390,29 @@ def conc_label(up, lvl, reading):
                         "2020-02、2021-11 两个红点顶部都是这种形态" if hot else
                         "原始值仍在历史高位，读数不高只是因为没比过去一年更高——不代表不拥挤")}
     return {"key": "normal", "name": "正常", "msg": "没有明显趋势、也不在历史高位，读数可以直接看"}
+
+
+def hot_end(temp, px):
+    """热端表现，月末更新（当月按最新一日）。返回以月末日期为索引的 DataFrame：
+    n（热端天数）、edge（热端之后 FWD 日均值减全部日子均值，pp；热端 < HOT_MIN 天时为 NaN）、
+    hot_mean / hot_neg、all_mean / all_neg（% ）、end（样本止于哪天）。只用当时已有的数据。"""
+    fwd = px.shift(-FWD) / px - 1
+    ix = temp.index
+    ends = ix.to_series().groupby([ix.year, ix.month]).max()
+    rows = {}
+    for t in ends:
+        i = ix.get_loc(t) - FWD               # 窗口止于 t−FWD：那天之后的收益在 t 日刚好可知
+        if i < HOT_WIN - 1:
+            continue
+        a, b = temp.iloc[i - HOT_WIN + 1: i + 1], fwd.iloc[i - HOT_WIN + 1: i + 1]
+        m = a.notna() & b.notna()
+        if m.sum() < HOT_WIN * 0.8:
+            continue
+        h = m & (a >= HOT_LVL)
+        n = int(h.sum())
+        rows[t] = {"n": n,
+                   "edge": (b[h].mean() - b[m].mean()) * 100 if n >= HOT_MIN else np.nan,
+                   "hot_mean": b[h].mean() * 100 if n else np.nan,
+                   "hot_neg": (b[h] < 0).mean() * 100 if n else np.nan,
+                   "all_mean": b[m].mean() * 100, "all_neg": (b[m] < 0).mean() * 100, "end": ix[i]}
+    return pd.DataFrame.from_dict(rows, orient="index")
