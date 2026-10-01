@@ -230,6 +230,7 @@ table.ext .r{white-space:nowrap;font-size:12.5px}
     <p class="sub" id="strat-sub"></p>
     <div class="strat-row" id="strat-row"></div>
     <div class="strat-bar" id="strat-bar"></div>
+    <p class="sub" id="strat-snap" style="margin:12px 0 0"></p>
   </section>
 
   <section>
@@ -283,11 +284,7 @@ table.ext .r{white-space:nowrap;font-size:12.5px}
     <h2>红点有效性</h2>
     <p class="sub" id="valid-sub"></p>
     <div class="vtiles" id="vtiles"></div>
-    <div class="chart-box" style="margin-top:12px"><svg id="cVT" role="img" aria-label="红点温度与固定、自适应两条门槛"></svg>
-      <p class="sub vcap" id="cap-vt"></p></div>
-    <div class="chart-box" style="margin-top:8px"><svg id="cVR" role="img" aria-label="近两年红点实际触发频率"></svg>
-      <p class="sub vcap" id="cap-vr"></p></div>
-    <div class="chart-box" style="margin-top:8px"><svg id="cVI" role="img" aria-label="滚动 IC"></svg>
+    <div class="chart-box" style="margin-top:12px"><svg id="cVI" role="img" aria-label="滚动 IC"></svg>
       <p class="sub vcap" id="cap-vi"></p></div>
     <div class="chart-box" style="margin-top:8px"><svg id="cVC" role="img" aria-label="集中度上升占比"></svg>
       <p class="sub vcap" id="cap-vc"></p></div>
@@ -772,16 +769,8 @@ function vChart(id, h, lo, hi, lines, refs, dots, yfmt){
 }
 function drawValid(){
   if (!VV) return;
-  const S = D.series, fl = D.alerts.flags, red = "#CE5A4E";
-  const onlyAd = (fl.hot_ad || []).map((v,i) => v && !(fl.hot || [])[i]);
-  vChart("cVT", 150, 0, 100, [[S.temperature_sell, "#8FA6BD", N > 1200 ? 1 : 1.3],
-                               [S.th_adaptive, "#E8A09A", 1.3, "2 3"]],
-    [[VV.th_fixed, red, `固定门槛 ${VV.th_fixed}`]],
-    [[S.temperature_sell, onlyAd, red, true], [S.temperature_sell, fl.hot, red, false]], z => z.toFixed(0));
-  const rv = (S.red_rate_2y || []).filter(z => z != null), rmax = Math.max(VV.design_rate * 2.5, ...rv, 1);
-  vChart("cVR", 120, 0, Math.ceil(rmax), [[S.red_rate_2y, "#8FA6BD", 1.5]],
-    [[VV.design_rate, "#5FA86B", `设计 ${VV.design_rate}%`], [VV.design_rate / 2, "#D19A3E", "设计的一半", "2 3"]],
-    [], z => z.toFixed(1) + "%");
+  // 2026-10-01 按用户要求去掉「温度与两条门槛」「近 2 年触发频率」两张小图，对应数字卡片保留
+  const S = D.series;
   vChart("cVI", 120, -0.8, 0.4, [[S.red_ic, "#8FA6BD", 1.5]], [[0, "#D19A3E", "0：不含方向信息"]], [],
     z => z.toFixed(1));
   if (VV.conc) vChart("cVC", 120, 0, 100, [[S.conc_top2_up, "#8FA6BD", 1.5], [S.conc_topshare_up, "#8FA6BD", 1, "4 3"]],
@@ -820,11 +809,6 @@ function drawValid(){
      `（${CC.hist_from} 以来第 ${fz(CI.top2.lvl)} 分位）· 今日读数 ${fz(CI.top2.reading)}`,
      CI.top2.msg + (CI.topshare ? `<br>前2%：${CI.topshare.state}（${fz(CI.topshare.up)}% · 第 ${fz(CI.topshare.lvl)} 分位 · 读数 ${fz(CI.topshare.reading)}）` : ""),
      CI.top2.state_key !== "normal"]] : []).map(([t, b, e1, e2, w]) => `<div class="vtile"><i>${t}</i><b>${b}</b><em>${e1}</em><em class="${w ? "warn" : ""}">${e2}</em></div>`).join("");
-  $("cap-vt").innerHTML = `红点温度（灰线）、固定门槛 ${VV.th_fixed}（红虚线）与自适应门槛（浅红点线）。
-    实心点＝固定门槛红点，空心点＝只有自适应门槛成立的红点。自适应门槛要至少 ${VV.ad_minp / 252} 年温度才有读数。`;
-  $("cap-vr").innerHTML = `近 ${VV.rate_win / 252} 年里固定门槛红点占交易日的比例；绿虚线＝设计值 ${VV.design_rate}%
-    （标定窗口里的实际频率），橙虚线＝设计的一半。长期低于橙线＝红点在这个时代基本亮不了（2007-2016 长面板上就是这样）；
-    单看一两个月的起落没有意义——它不预测近期会不会亮。`;
   $("cap-vi").innerHTML = `红点温度与之后 ${VV.fwd} 个交易日 QQQ 收益的 Spearman 相关，${VV.ic_win} 日窗口，每月更新一次（当月按最新一日）；
     t 日只用到 t−${VV.fwd} 为止的样本。负值＝温度高之后跌。长面板上 2010-16 平均 −0.20、2018-26 平均 −0.30。
     它量的是整个分布（也包括"温度低之后涨"那一端），不等于顶部预警的质量；连续一两年贴近 0 或转正才值得警惕。`;
@@ -1201,6 +1185,17 @@ setRange(RSTART, REND, false);
     `<b>${pct(x.w)}</b></div>`).join("");
   $("strat-bar").innerHTML = items.map(x =>
     `<i style="width:${(x.w * 100).toFixed(2)}%;background:${x.c}" title="${x.name} ${pct(x.w)}"></i>`).join("");
+  // 信号快照（2026-09-30）：历史红/黄/蓝点每次按今天的成分股名单重算、会被改写；持仓在快照覆盖的日子里用快照
+  const sn = D.snapshot;
+  const onoff = b => b ? "亮" : "不亮";
+  $("strat-snap").textContent = !sn
+    ? "信号快照尚未开始记录：持仓用的历史信号全部按当次重算（成分股调整、数据起点后移都可能改写历史点）。"
+    : `持仓用的信号以每日快照为准：自 ${sn.from} 起已记 ${sn.n} 天` + (sn.n_fill ? `（其中补记 ${sn.n_fill} 天）` : "") +
+      `，更早的日子按当次重算。` +
+      (sn.n_diff
+        ? `今天重算与快照不一致 ${sn.n_diff} 处：` +
+          sn.diffs.slice(-6).map(x => `${x.date} ${x.sig}（快照${onoff(x.snap)}，重算${onoff(x.now)}）`).join("；") + "。"
+        : "今天重算与快照完全一致。");
   $("stratsec").style.display = "";
 } catch (e) { console.error("策略持仓渲染失败", e); } })();   // 出错也不能拖累后面的图表
 
