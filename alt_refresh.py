@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""替代权重版的每日刷新：拉行情 → 重算 → 渲染 dashboard_alt.html → 报新触发的预警。
+"""最优拟合的每日刷新：拉行情 → 重算 → 渲染 dashboard_alt.html → 报新触发的预警。
 
 与 us2 仓库里的 daily_refresh.py 是同一条流水线，只有第三、四步不同：
 那边跑 engine.py + build.py 出 dashboard.html（生产权重、含黑框、含温度图），
-这里跑 make_alt_page.py 出 dashboard_alt.html（替代权重、无黑框、无温度图）。
+这里跑 make_alt_page.py 出 dashboard_alt.html（最优拟合权重、无黑框、无温度图）。
 
 用法：
     python3 alt_refresh.py           全量：每只票重下十年（约 134MB），慢但绝对干净
@@ -58,7 +58,7 @@ def main():
                 newly.append(rule)
     json.dump({"last_as_of": as_of}, open(state_p, "w", encoding="utf-8"))
 
-    print(f"截至 {as_of}：替代红点温度 {d['temperature_sell']}（门槛 {d['sell_threshold']:g}）  "
+    print(f"截至 {as_of}：最优拟合红点温度 {d['temperature_sell']}（门槛 {d['sell_threshold']:g}）  "
           f"蓝点温度(当日口径) {d.get('temperature_fast')}"
           + ("" if is_new_day else "   [与上次运行同一交易日，跳过重复提醒判定]"))
     if not is_new_day:

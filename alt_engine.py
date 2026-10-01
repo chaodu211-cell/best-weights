@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""替代口径的红点：与 engine.SELL_W 不同的一套权重，单独成页，不影响生产流水线。
+"""最优拟合口径的红点：与 engine.SELL_W 不同的一套权重，单独成页，不影响生产流水线。
 
 —— 这套权重是怎么来的（2026-09-18 重标）——
 在训练窗（2017-10 至今）上把**12 个最小独立因子**当自由参数扫，判据是**真实规则**
@@ -236,7 +236,7 @@ def cap_vs_equal(cw, idx):
 
 
 def alt_inputs(rawdf, adj, lev_pct, spy, idx):
-    """返回替代红点的五个分项（都是 0-100，与主口径同尺）。
+    """返回最优拟合红点的五个分项（都是 0-100，与主口径同尺）。
 
     lev_pct: engine.leverage_monitor 返回的第一项（含 ratio / intensity 两列分位）。
     注意这里**不用**它返回的 lev_temp——那个是按 leverage.py 的 3:1 合成的。
@@ -332,7 +332,7 @@ def blue_temperature(adj_like):
 def validity(temp, px):
     """红点有效性检验要用的几条序列，全部只用当时已有的数据。
 
-    temp: 替代红点温度（全历史）；px: 标的收盘（与 temp 同索引）。
+    temp: 最优拟合红点温度（全历史）；px: 标的收盘（与 temp 同索引）。
     返回 dict：t3（连 3 日温度）、hot（固定门槛红点）、th_ad（自适应门槛）、hot_ad（自适应红点）、
     rate（近 2 年实际触发频率 %）、ic（滚动 IC，月末更新后前向填充）、ic_m（只含月末那几个点）、
     fwd（之后 FWD 日收益）。

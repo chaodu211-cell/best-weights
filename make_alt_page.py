@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""生成 dashboard_alt.html：替代口径红点 + 原样蓝点，去掉黑框与温度走势图。
+"""生成 dashboard_alt.html：最优拟合口径红点 + 原样蓝点，去掉黑框与温度走势图。
 
 做法是**复用生产管线**：先让 engine.main() 产出标准结构，再把红点那一部分换掉。
 这样分项面板、杠杆面板、实际利率图、宏观状态行全部照旧，不用再抄一遍接线——
@@ -194,9 +194,9 @@ def _runs(pos, gap=1):
 
 
 def patch(d, E, A, log=False):
-    """把标准结构改成替代口径。所有差异集中在这里。
+    """把标准结构改成最优拟合口径。所有差异集中在这里。
 
-    做三件事：① 换成替代红点的温度与旗标、摘掉黑框；② 展示与评估标的按 TARGET 设定
+    做三件事：① 换成最优拟合红点的温度与旗标、摘掉黑框；② 展示与评估标的按 TARGET 设定
     （现为纳指 QQQ）；③ **按实际参与计算的因子重建分项面板**——生产结构里的 panel 是按生产权重
     拼的，直接沿用会出现"页面写着某因子、实际权重是 0"这类对不上的情况。
     """
@@ -204,7 +204,7 @@ def patch(d, E, A, log=False):
     num = lambda v, n=1: (None if v is None or not np.isfinite(v) else round(float(v), n))
     ser = lambda s: [num(v) for v in s.reindex(dates).values]
 
-    # —— 重算替代红点温度（再取一次原始面板；比抄一份接线安全）——
+    # —— 重算最优拟合红点温度（再取一次原始面板；比抄一份接线安全）——
     rawdf, meta, spy, _ = E.build_indicators()
     dirs = E.direction(spy, rawdf.index)
     _, adj, _, _ = E.compose(rawdf, dirs)
@@ -217,7 +217,7 @@ def patch(d, E, A, log=False):
     parts = A.alt_inputs(rawdf, adj, lev_pct, spy, rawdf.index)
     temp_alt = A.alt_temperature(parts)
     if temp_alt is None:
-        sys.exit(f"替代红点温度算不出来：分项缺失（检查 {TARGET} / {A.EW_SYM} / VIX / 杠杆ETF 是否齐全）")
+        sys.exit(f"最优拟合红点温度算不出来：分项缺失（检查 {TARGET} / {A.EW_SYM} / VIX / 杠杆ETF 是否齐全）")
     ta = temp_alt.reindex(dates)
     # 蓝点用的当日口径分项（换手率/上涨占比/杠杆多空比取未平滑值），与生产完全一致
     rf = rawdf.copy()
@@ -389,9 +389,9 @@ def patch(d, E, A, log=False):
     li, lj = A.LEV_INNER
     for r in d["alerts"]["rules"]:
         if r["key"] == "hot":
-            r["name"] = "红点预警（替代权重）"
+            r["name"] = "红点预警（最优拟合）"
             r["desc"] = (
-                f"替代红点温度 > {A.ALT_TH:g}，连续 {A.ALT_PERSIST} 个交易日。"
+                f"最优拟合红点温度 > {A.ALT_TH:g}，连续 {A.ALT_PERSIST} 个交易日。"
                 f"温度 = {wtxt}（合计 100%）。"
                 f"其中<b>杠杆温度</b>内部按「多空比 : 交易强度 = {li:g} : {lj:g}」合成"
                 f"（不是 leverage.py 的 3:1，实测这一处值 2.65pp）；"
@@ -406,7 +406,7 @@ def patch(d, E, A, log=False):
                    f"此前的读数原样保留，之后的分位与同口径的过去 252 日比；这一处没有单独重标门槛。"
                    if lev_single else ""))
         elif r["key"] == "cold":
-            r["name"] = "蓝点预警（替代权重）"
+            r["name"] = "蓝点预警（最优拟合）"
             r["desc"] = (
                 f"蓝点温度（当日口径）< {A.BLUE_TH:g} 且 VIX ≥ {E.VIX_COLD}，"
                 f"{'当日成立即触发' if E.PERSIST_COLD <= 1 else f'连续 {E.PERSIST_COLD} 个交易日'}。"
@@ -559,7 +559,7 @@ def main():
     print(f"\n写入 {a.out}（{len(html)} 字节）与 {a.data_out}")
     print(f"覆盖 {d['series']['dates'][0]} ~ {d['series']['dates'][-1]}"
           f"（{len(d['series']['dates'])} 个交易日）")
-    print(f"截止日：替代红点温度 {d['temperature_sell']}（门槛 {d['sell_threshold']:g}）  "
+    print(f"截止日：最优拟合红点温度 {d['temperature_sell']}（门槛 {d['sell_threshold']:g}）  "
           f"蓝点当日温度 {d.get('temperature_fast')}  "
           f"重估期 {'是' if (d['series'].get('repricing') or [False])[-1] else '否'}")
     print(f"基准 后{H}日 {base.mean()*100:+.2f}% / {(base < 0).mean()*100:.0f}%为负")

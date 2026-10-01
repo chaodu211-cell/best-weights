@@ -1,6 +1,6 @@
 name: daily
 
-# 最优拟合 · 替代权重版：每个美股交易日拉行情 → alt_refresh.py 重算 → 发布到 GitHub Pages。
+# 最优拟合：每个美股交易日拉行情 → alt_refresh.py 重算 → 发布到 GitHub Pages。
 #
 # 分工：GitHub 负责算，Claude 负责推送。
 #   · 本工作流：北京时间 19:07 左右（周一至周五）跑完整条流水线，页面发布到

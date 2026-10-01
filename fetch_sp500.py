@@ -39,9 +39,9 @@ GICS_CN = {
 # 少拉任何一只，该分项就会用陈旧数据继续算，且平滑窗口会把缺口悄悄补上。
 LEV_LONG  = ["TQQQ", "UPRO", "SPXL", "SSO", "QLD", "TNA", "SOXL", "FAS", "TECL", "UDOW"]
 LEV_SHORT = ["SQQQ", "SPXS", "SDS", "TZA", "SOXS"]
-# RSP：替代红点「市值跑赢等权」的等权一侧（2026-10-01 起；2017-03 以前由 hist/RSP_backfill_2004-2017.csv.gz 补回）
+# RSP：最优拟合红点「市值跑赢等权」的等权一侧（2026-10-01 起；2017-03 以前由 hist/RSP_backfill_2004-2017.csv.gz 补回）
 ETFS = (["XLK", "XLC", "XLY", "XLF", "XLV", "XLI", "XLP", "XLE", "XLU", "XLRE", "XLB",
-         "SPY", "QQQ", "SOXX", "RSP"] + LEV_LONG + LEV_SHORT)   # SOXX：替代版页面的展示与评估标的
+         "SPY", "QQQ", "SOXX", "RSP"] + LEV_LONG + LEV_SHORT)   # SOXX：最优拟合页面的展示与评估标的
 
 CTX = ssl.create_default_context()
 _lock = threading.Lock()

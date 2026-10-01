@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>纳斯达克 · 红点蓝点（替代权重版）</title>
+<title>纳斯达克 · 红点蓝点（最优拟合）</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap">
@@ -205,7 +205,7 @@ table.ext .r{white-space:nowrap;font-size:12.5px}
 
 <div class="wrap">
   <header>
-    <h1>美股情绪温度计 · 替代权重版 <span>Alternative Weights</span></h1>
+    <h1>美股情绪温度计 · 最优拟合 <span>Best Fit</span></h1>
     <div class="meta" id="meta"></div>
   </header>
 
@@ -450,7 +450,7 @@ const W = 1000, H = 300, M = {t:12, r:14, b:26, l:34};
 let rrLink = null;
 function drawTemp(){
   const svg = $("cTemp");
-  if (!svg) return;   // 替代版页面没有温度图，这里短路；共用的区间滑块仍然驱动另外两张图
+  if (!svg) return;   // 最优拟合页面没有温度图，这里短路；共用的区间滑块仍然驱动另外两张图
   svg.innerHTML = "";
   const A = RSTART, Bx = REND + 1, S2 = S.slice(A, Bx), N2 = S2.length, D2 = D.series.dates.slice(A, Bx);
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
@@ -981,7 +981,7 @@ $("alegend").innerHTML = AL.rules.map(r => {
 }).join("");
 
 /* ---- legend ---- */
-/* 温度分档图例只在有温度图时才有位置可放；替代版没有那张图，跳过 */
+/* 温度分档图例只在有温度图时才有位置可放；最优拟合页面没有那张图，跳过 */
 if ($("legend")) $("legend").innerHTML = R.map((r, i) =>
   `<span><i class="sw" style="background:${r.hex};opacity:.45"></i>${r.name} ${i===0?0:B[i-1]}–${i===R.length-1?100:B[i]}</span>`
 ).join("");
