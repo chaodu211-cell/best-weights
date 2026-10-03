@@ -5,3 +5,6 @@ raw/
 策略回测/etf/
 __pycache__/
 策略回测/_grid*.csv
+
+# 盈利修正：独立仓库 chaodu211-cell/earnings-revision（有自己的 .git 和每日流水线），这里整个目录不跟踪
+盈利修正/
