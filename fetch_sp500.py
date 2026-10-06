@@ -20,6 +20,8 @@ import urllib.error, urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import hist_store as H   # raw/ 只增不减 + hist/ 长历史存档（2026-09-30）
 import single_lev as SL  # 红点杠杆因子并入的单股杠杆 ETF（2026-09-30）
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 RAW = os.path.join(BASE, "raw")
@@ -27,6 +29,22 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 WIKI = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 HIST = "https://stockanalysis.com/api/symbol/{kind}/{sym}/history?range={rng}&period=Day"
+
+# 盘中半成品闸门（2026-10-06 加）：美股交易时段里，数据源会把「今天」当成一根日线返回——收盘价是实时价、
+# 成交量只有开盘以来那一段。北京时间 21:30 ~ 次日 06:00 之间手动补跑，这根半成品就会被当成最新一天：
+# 2026-10-06 22:12 那次补跑，开盘 40 分钟的数据把红点温度算成 86.4（前一天 61.0），还写进了 _信号快照.csv。
+# 规则：美东当天 CLOSE_HOUR_ET 点之前，日期 ≥ 美东「今天」的行一律不要；定时运行在美东早上 6~8 点，不受影响。
+CLOSE_HOUR_ET = 18
+
+
+def complete_cutoff(now=None):
+    """→ 'YYYY-MM-DD'：只保留日期严格早于它的日线。"""
+    now = now or datetime.now(ZoneInfo("America/New_York"))
+    d = now.date() if now.hour < CLOSE_HOUR_ET else now.date() + timedelta(days=1)
+    return d.isoformat()
+
+
+CUTOFF = complete_cutoff()
 
 GICS_CN = {
     "Information Technology": "信息技术", "Communication Services": "通信服务",
@@ -118,6 +136,7 @@ def fetch_one(sym, is_etf, rng):
                     except (KeyError, TypeError, ValueError):
                         continue
                     rows.append([d, f"{a:g}", f"{c:g}", f"{v:.0f}"])
+                rows = [r for r in rows if r[0] < CUTOFF]      # 盘中半成品闸门，见 CUTOFF
                 rows.sort(reverse=True)
                 if rows:
                     return sym, rows, None
@@ -264,6 +283,7 @@ def main():
 
     mode = f"增量 {INC_RANGE}（自动补全量）" if inc else f"全量 {a.range}"
     print(f"② 拉取 {len(targets)} 个标的 × {mode} 日线，并发 {a.workers}…")
+    print(f"   只用 {CUTOFF} 之前的日线（美东当天 {CLOSE_HOUR_ET}:00 之前不收当天那根，防盘中半成品）")
     ok, fail, t0 = [], [], time.time()
     fulls = ext = 0
     with ThreadPoolExecutor(max_workers=a.workers) as ex:
@@ -278,6 +298,8 @@ def main():
                 fulls += was_full
             else:
                 sym, rows, err = res
+            if rows:
+                rows = [r for r in rows if r[0] < CUTOFF]      # 增量合并会带回本地旧的半成品行，写盘前再筛一次
             if rows:
                 # 数据源只给 10 年：写盘前把本地更早的行、hist/ 存档接回去，起点不再随全量重下往后挪
                 rows, n_ext = H.extend(sym, rows, _read_local(sym))
