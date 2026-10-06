@@ -41,7 +41,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # 两次备份定时运行先看线上 status.json：北京 19:00 之后已有一次抓取成功的发布，就说明今天的数据已到，备份跳过。
+  # 只拦备份那两条 cron；主运行、代码推送、手动运行照常跑。读不到 status.json 时不跳过（宁可多跑一次）。
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - id: check
+        if: ${{ github.event_name == 'schedule' && github.event.schedule != '7 11 * * 1-5' }}
+        run: |
+          curl -fsS --retry 3 "https://chaodu211-cell.github.io/best-weights/status.json?t=$(date +%s)" -o status.json || exit 0
+          python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          st = json.load(open("status.json", encoding="utf-8"))
+          now = datetime.now(timezone.utc)
+          cutoff = now.replace(hour=11, minute=0, second=0, microsecond=0)   # 当天 11:00 UTC = 北京 19:00
+          gen = datetime.fromisoformat(st["generated_at"].replace("Z", "+00:00"))
+          skip = bool(st.get("fetch_ok")) and gen >= cutoff
+          print(f"线上 status.json：截至 {st['as_of']}，生成于 {st['generated_at']}，抓取成功 {st.get('fetch_ok')} → "
+                + ("今天的数据已有，备份跳过" if skip else "还没有今天的数据，备份照跑"))
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"skip={'true' if skip else 'false'}\n")
+          PY
+
   refresh:
+    needs: check
+    if: ${{ needs.check.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     # 与本地 Mac 同一时区：预先登记表的「登记时间」、各脚本里的“今天”都按北京时间算
