@@ -452,8 +452,6 @@ $("regime").innerHTML = structureLine() || `<span style="color:${cur.hex}">${cur
 $("regime").title = (D.panel || []).filter(p => (D.sell_weights || {})[p.key] > 0)
   .map(p => `${lab[p.key] || p.name} 分位 ${p.pct.toFixed(1)}`).join("\n");
 const S = HEROS, N = S.length;
-const vAt = k => { for (let i = N-1-k; i >= 0; i--) if (S[i] != null) return S[i]; return null; };
-const d5 = vAt(5), d20 = vAt(20);
 // 蓝点温度只报数，不带档位词和口径说明（口径写在「指标口径」卡片里）
 const blueTxt = D.temperature == null ? "" :
   `蓝点温度 <span style="color:${regOf(D.temperature).hex}">${D.temperature.toFixed(1)}</span>`;
@@ -461,8 +459,6 @@ $("rawnote").innerHTML = blueTxt;
 const valid = S.filter(v => v != null);
 $("delta").textContent = [
   `红点门槛 ${fmtTh(D.sell_threshold || 75)}`,
-  d5  !== null ? `5日 ${HEROV-d5>0?"+":""}${(HEROV-d5).toFixed(1)}`   : "",
-  d20 !== null ? `20日 ${HEROV-d20>0?"+":""}${(HEROV-d20).toFixed(1)}` : "",
   valid.length ? `区间 ${Math.min(...valid).toFixed(1)}–${Math.max(...valid).toFixed(1)}` : ""
 ].filter(Boolean).join("   ·   ");
 
