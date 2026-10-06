@@ -396,29 +396,53 @@ const STRUCT = {
              cold: "杠杆资金降温",       cold2: "杠杆资金明显退潮"},
   vix_abs:  {hot: v => `VIX 偏低（${v}）`, hot2: v => `VIX 很低（${v}）`,
              cold: v => `VIX 抬升（${v}）`, cold2: v => `VIX 高企（${v}）`},
-  narrow:   {hot: "指数靠大票撑着",     hot2: "指数高度依赖大票",
-             cold: "大票领涨减弱",       cold2: "中小票反超大票"},
-  top2:     {hot: "行业抱团偏紧",       hot2: "资金高度抱团头部行业",
-             cold: "行业抱团有所松动",   cold2: "行业抱团明显松动"},
-  topshare: {hot: "成交向头部个股集中", hot2: "成交高度集中在少数个股",
-             cold: "头部个股成交占比回落", cold2: "个股成交明显分散"}
+  narrow:   {hot: "指数靠大市值公司撑着", hot2: "指数高度依赖大市值公司",
+             cold: "大市值公司领涨减弱",   cold2: "中小市值公司反超大市值公司"}
 };
+/* TOP2 行业与前2% 个股讲的是同一件事：资金挤没挤在少数行业和公司里。
+   一个过线（≥65 / ≤35）、另一个也接近（≥60 / ≤40）就合成一句「行业和公司」，否则各说各的。 */
+const CROWD = {top2: "行业", topshare: "公司"};
+const crowdSay = (where, lvl) => ({
+  hot:  `资金明显挤在少数${where}中`,      hot2:  `资金高度挤在少数${where}中`,
+  cold: `资金并没有显著挤在少数${where}中`, cold2: `资金远没有挤在少数${where}中`
+})[lvl];
 function structureLine(){
   const sw = D.sell_weights || {}, P = {};
   (D.panel || []).forEach(p => { P[p.key] = p; });
-  const fs = Object.keys(sw).filter(k => sw[k] > 0 && P[k] && P[k].pct != null && STRUCT[k]);
+  const fs = Object.keys(sw).filter(k => sw[k] > 0 && P[k] && P[k].pct != null && (STRUCT[k] || CROWD[k]));
   if (D.temperature_sell == null || !fs.length) return null;
-  const say = (k, lvl) => { const t = STRUCT[k][lvl]; return typeof t === "function" ? t(P[k].value) : t; };
-  const pull = k => sw[k] * (P[k].pct - 50);
-  const hot  = fs.filter(k => P[k].pct >= 65).sort((a, b) => pull(b) - pull(a));
-  const cold = fs.filter(k => P[k].pct <= 35).sort((a, b) => pull(a) - pull(b));
-  const span = (txt, c) => `<span style="color:${c};white-space:nowrap">${txt}</span>`;   // 单个因子的短语不从中间断行
-  const H = hot.map(k => span(say(k, P[k].pct >= 80 ? "hot2" : "hot"), "#D19A3E")).join("、");
-  const C = cold.map(k => span(say(k, P[k].pct <= 20 ? "cold2" : "cold"), "#4FA3A0")).join("、");
+  const pct = k => P[k].pct, pull = k => sw[k] * (pct(k) - 50);
+  const side = v => v >= 65 ? "hot" : v <= 35 ? "cold" : null;
+  const lvl = (sd, vs) => sd === "hot" ? (vs.every(v => v >= 80) ? "hot2" : "hot")
+                                       : (vs.every(v => v <= 20) ? "cold2" : "cold");
+  const items = [];   // 一条 = 一个短语：{side, pull, text}
+  fs.filter(k => STRUCT[k] && side(pct(k))).forEach(k => {
+    const sd = side(pct(k)), t = STRUCT[k][lvl(sd, [pct(k)])];
+    items.push({side: sd, pull: pull(k), text: typeof t === "function" ? t(P[k].value) : t});
+  });
+  const ck = fs.filter(k => CROWD[k]);
+  const lead = ck.filter(k => side(pct(k))).sort((a, b) => Math.abs(pull(b)) - Math.abs(pull(a)))[0];
+  if (lead){
+    const sd = side(pct(lead)), mate = ck.find(k => k !== lead);
+    if (mate && (sd === "hot" ? pct(mate) >= 60 : pct(mate) <= 40))
+      items.push({side: sd, pull: pull(lead) + pull(mate),
+                  text: crowdSay("行业和公司", lvl(sd, [pct(lead), pct(mate)]))});
+    else ck.filter(k => side(pct(k))).forEach(k => {
+      const s2 = side(pct(k));
+      items.push({side: s2, pull: pull(k), text: crowdSay(CROWD[k], lvl(s2, [pct(k)]))});
+    });
+  }
+  const hot  = items.filter(x => x.side === "hot").sort((a, b) => b.pull - a.pull);
+  const cold = items.filter(x => x.side === "cold").sort((a, b) => a.pull - b.pull);
+  // 单个短语不从中间断行；「但」粘在后一句开头，免得孤零零挂在行尾
+  const span = (txt, c, pre = "") => `<span style="white-space:nowrap">${pre}<span style="color:${c}">${txt}</span></span>`;
+  const H = hot.map(x => span(x.text, "#D19A3E")).join("、");
+  const C = cold.map((x, i) => span(x.text, "#4FA3A0", i === 0 && hot.length ? "但" : "")).join("、");
+  const nHot = fs.filter(k => side(pct(k)) === "hot").length, nCold = fs.filter(k => side(pct(k)) === "cold").length;
   let s;
-  if (H && C)      s = `${H}，但${C}`;
-  else if (H)      s = hot.length === fs.length ? `${H}，${fs.length} 个因子全面偏热` : `${H}，其余因子在中位附近`;
-  else if (C)      s = cold.length === fs.length ? `${C}，${fs.length} 个因子全面偏冷` : `${C}，其余因子在中位附近`;
+  if (H && C)      s = `${H}，${C}`;
+  else if (H)      s = nHot === fs.length ? `${H}，${fs.length} 个因子全面偏热` : `${H}，其余因子在中位附近`;
+  else if (C)      s = nCold === fs.length ? `${C}，${fs.length} 个因子全面偏冷` : `${C}，其余因子在中位附近`;
   else             s = `${fs.length} 个因子都在中位附近，没有明显的热点或冷点`;
   if (D.bear && D.bear.now && sw.narrow) s += "（下跌市，市值跑赢等权记中性）";
   return s + "。";
@@ -430,10 +454,9 @@ $("regime").title = (D.panel || []).filter(p => (D.sell_weights || {})[p.key] > 
 const S = HEROS, N = S.length;
 const vAt = k => { for (let i = N-1-k; i >= 0; i--) if (S[i] != null) return S[i]; return null; };
 const d5 = vAt(5), d20 = vAt(20);
+// 蓝点温度只报数，不带档位词和口径说明（口径写在「指标口径」卡片里）
 const blueTxt = D.temperature == null ? "" :
-  `蓝点温度 <span style="color:${regOf(D.temperature).hex}">${D.temperature.toFixed(1)} · ${D.regime}</span>` +
-  (D.temperature_fast == null ? "" :
-    `<span style="color:var(--ink3)">（当日口径 ${D.temperature_fast.toFixed(1)}，蓝点据此判定）</span>`);
+  `蓝点温度 <span style="color:${regOf(D.temperature).hex}">${D.temperature.toFixed(1)}</span>`;
 $("rawnote").innerHTML = blueTxt;
 const valid = S.filter(v => v != null);
 $("delta").textContent = [
