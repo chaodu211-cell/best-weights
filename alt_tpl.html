@@ -36,6 +36,8 @@ h1 span{color:var(--ink3);font-weight:300}
      letter-spacing:-.03em;font-variant-numeric:tabular-nums}
 .hero-label{font-size:11.5px;letter-spacing:.16em;color:var(--ink3);font-family:var(--mono);margin-bottom:14px}
 .regime{display:inline-flex;align-items:center;gap:9px;margin-top:18px;font-size:19px;font-weight:500;letter-spacing:.04em}
+/* 温度下面那句结构描述：限宽，免得把左栏撑宽、挤掉右边的色带 */
+.structure{margin-top:18px;max-width:23em;font-size:15.5px;line-height:1.65;color:var(--ink2);letter-spacing:.02em}
 .dot{width:11px;height:11px;border-radius:50%;flex:none}
 .delta{font-family:var(--mono);font-size:13px;color:var(--ink2);margin-top:10px}
 
@@ -213,7 +215,7 @@ table.ext .r{white-space:nowrap;font-size:12.5px}
     <div>
       <div class="hero-label">红点温度</div>
       <div class="big" id="temp">--</div>
-      <div class="regime" id="regime"></div>
+      <div class="structure" id="regime"></div>
       <div class="delta" id="delta"></div>
       <div class="delta" id="rawnote" style="margin-top:6px"></div>
     </div>
@@ -385,8 +387,46 @@ const HEROS = (D.series.temperature_sell && D.series.temperature_sell.some(v => 
 const cur = regOf(HEROV);
 $("temp").textContent = HEROV.toFixed(1);
 $("temp").style.color = HEROV > (D.sell_threshold || 75) ? "#CE5A4E" : cur.hex;
-$("regime").innerHTML = `<span class="dot" style="background:${cur.hex}"></span>${cur.name}`
-  + `<span style="color:var(--ink3)">　红点门槛 ${fmtTh(D.sell_threshold || 75)}</span>`;
+/* 温度下面不写「偏热」这类档位词，改成一句话说清楚热在哪、冷在哪。
+   取红点五个因子的当前分位：≥65 算热、≤35 算冷（≥80 / ≤20 换更重的措辞），中间的不提；
+   热、冷两组各按对温度的拉动（权重 ×（分位 − 50））从大到小排。
+   除 VIX 外都是 252 日滚动分位，所以措辞说的是「相对过去一年」，不是绝对水平。 */
+const STRUCT = {
+  lev:      {hot: "杠杆资金偏多",       hot2: "杠杆资金大举做多",
+             cold: "杠杆资金降温",       cold2: "杠杆资金明显退潮"},
+  vix_abs:  {hot: v => `VIX 偏低（${v}）`, hot2: v => `VIX 很低（${v}）`,
+             cold: v => `VIX 抬升（${v}）`, cold2: v => `VIX 高企（${v}）`},
+  narrow:   {hot: "指数靠大票撑着",     hot2: "指数高度依赖大票",
+             cold: "大票领涨减弱",       cold2: "中小票反超大票"},
+  top2:     {hot: "行业抱团偏紧",       hot2: "资金高度抱团头部行业",
+             cold: "行业抱团有所松动",   cold2: "行业抱团明显松动"},
+  topshare: {hot: "成交向头部个股集中", hot2: "成交高度集中在少数个股",
+             cold: "头部个股成交占比回落", cold2: "个股成交明显分散"}
+};
+function structureLine(){
+  const sw = D.sell_weights || {}, P = {};
+  (D.panel || []).forEach(p => { P[p.key] = p; });
+  const fs = Object.keys(sw).filter(k => sw[k] > 0 && P[k] && P[k].pct != null && STRUCT[k]);
+  if (D.temperature_sell == null || !fs.length) return null;
+  const say = (k, lvl) => { const t = STRUCT[k][lvl]; return typeof t === "function" ? t(P[k].value) : t; };
+  const pull = k => sw[k] * (P[k].pct - 50);
+  const hot  = fs.filter(k => P[k].pct >= 65).sort((a, b) => pull(b) - pull(a));
+  const cold = fs.filter(k => P[k].pct <= 35).sort((a, b) => pull(a) - pull(b));
+  const span = (txt, c) => `<span style="color:${c};white-space:nowrap">${txt}</span>`;   // 单个因子的短语不从中间断行
+  const H = hot.map(k => span(say(k, P[k].pct >= 80 ? "hot2" : "hot"), "#D19A3E")).join("、");
+  const C = cold.map(k => span(say(k, P[k].pct <= 20 ? "cold2" : "cold"), "#4FA3A0")).join("、");
+  let s;
+  if (H && C)      s = `${H}，但${C}`;
+  else if (H)      s = hot.length === fs.length ? `${H}，${fs.length} 个因子全面偏热` : `${H}，其余因子在中位附近`;
+  else if (C)      s = cold.length === fs.length ? `${C}，${fs.length} 个因子全面偏冷` : `${C}，其余因子在中位附近`;
+  else             s = `${fs.length} 个因子都在中位附近，没有明显的热点或冷点`;
+  if (D.bear && D.bear.now && sw.narrow) s += "（下跌市，市值跑赢等权记中性）";
+  return s + "。";
+}
+const lab = D.sell_labels || {};
+$("regime").innerHTML = structureLine() || `<span style="color:${cur.hex}">${cur.name}</span>`;
+$("regime").title = (D.panel || []).filter(p => (D.sell_weights || {})[p.key] > 0)
+  .map(p => `${lab[p.key] || p.name} 分位 ${p.pct.toFixed(1)}`).join("\n");
 const S = HEROS, N = S.length;
 const vAt = k => { for (let i = N-1-k; i >= 0; i--) if (S[i] != null) return S[i]; return null; };
 const d5 = vAt(5), d20 = vAt(20);
@@ -397,6 +437,7 @@ const blueTxt = D.temperature == null ? "" :
 $("rawnote").innerHTML = blueTxt;
 const valid = S.filter(v => v != null);
 $("delta").textContent = [
+  `红点门槛 ${fmtTh(D.sell_threshold || 75)}`,
   d5  !== null ? `5日 ${HEROV-d5>0?"+":""}${(HEROV-d5).toFixed(1)}`   : "",
   d20 !== null ? `20日 ${HEROV-d20>0?"+":""}${(HEROV-d20).toFixed(1)}` : "",
   valid.length ? `区间 ${Math.min(...valid).toFixed(1)}–${Math.max(...valid).toFixed(1)}` : ""
@@ -426,9 +467,10 @@ function bandPos(v){
   }
   return 100;
 }
+/* 色带指针跟主显示走（红点温度；拿不到时才退回蓝点温度），和左边的大数字、高亮格保持同一个数 */
 $("marker").innerHTML =
-  `<i style="left:${Math.min(97,Math.max(3,bandPos(D.temperature)))}%">${D.temperature.toFixed(1)}</i>` +
-  `<b style="left:${Math.min(99.5,Math.max(.5,bandPos(D.temperature)))}%"></b>`;
+  `<i style="left:${Math.min(97,Math.max(3,bandPos(HEROV)))}%">${HEROV.toFixed(1)}</i>` +
+  `<b style="left:${Math.min(99.5,Math.max(.5,bandPos(HEROV)))}%"></b>`;
 
 /* ---- 区间切换 ---- */
 const RANGES = [[252,"1年"],[756,"3年"],[1260,"5年"],[99999,"全部"]];
