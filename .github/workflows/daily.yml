@@ -162,6 +162,11 @@ jobs:
                 "fetch_ok": os.environ["FETCH_OK"] == "true",
                 "run_url": os.environ["RUN_URL"], "event": os.environ.get("GITHUB_EVENT_NAME"),
                 "sha": os.environ.get("GITHUB_SHA")}
+          # 抓取成功时附上 fetch_sp500.py 的报告：stale＝今天没拉到、沿用旧行的成分股 {代码: 最后一行日期}，
+          # moved＝自动识别出的数据源改名。抓取失败时 raw/ 里那份可能是上一次运行留下的，不附。
+          if st["fetch_ok"] and os.path.exists("raw/_fetch_report.json"):
+              rep = json.load(open("raw/_fetch_report.json", encoding="utf-8"))
+              st["stale"], st["moved"] = rep.get("stale", {}), rep.get("moved", {})
           json.dump(st, open("_site/status.json", "w", encoding="utf-8"), ensure_ascii=False)
           print(st)
           PY
@@ -214,6 +219,17 @@ jobs:
             if [ "${{ steps.pipeline.outcome }}" = "failure" ]; then
               echo "> ⚠️ **数据抓取失败**，页面用缓存的 raw/ 重建，行情可能不是最新的。"
               echo
+            elif [ -f raw/_fetch_report.json ]; then
+              python3 - <<'PY'
+          import json
+          r = json.load(open("raw/_fetch_report.json", encoding="utf-8"))
+          if r.get("stale"):
+              print("> ⚠️ **成分股没拉到、沿用旧行**：" + "、".join(f"{s}（最后 {d}）" for s, d in sorted(r["stale"].items()))
+                    + "。仍留在样本里，历史不受影响；连续几天都这样就要查是不是数据源改了代码。\n")
+          if r.get("moved"):
+              print("> ⚠️ **数据源改了代码**（已自动识别）：" + "、".join(f"{o} → {n}" for o, n in r["moved"].items())
+                    + "。请写进 fetch_sp500.py 的 RENAMED。\n")
+          PY
             fi
             echo '```'
             tail -40 run.log 2>/dev/null || echo "（没有日志：流水线在产出任何输出之前就失败了）"

@@ -16,7 +16,7 @@
 输出：raw/<TICKER>.csv（date,adjclose,close,volume，新到旧）、sectors.json
 """
 import argparse, json, os, re, ssl, sys, threading, time
-import urllib.error, urllib.request
+import urllib.error, urllib.parse, urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import hist_store as H   # raw/ 只增不减 + hist/ 长历史存档（2026-09-30）
 import single_lev as SL  # 红点杠杆因子并入的单股杠杆 ETF（2026-09-30）
@@ -45,6 +45,16 @@ def complete_cutoff(now=None):
 
 
 CUTOFF = complete_cutoff()
+
+# 数据源改了代码、维基百科（或我们的文件名）还是旧代码：{旧代码: 数据源的新代码}（2026-10-07 加）。
+# 文件名、sectors.json、hist/ 存档一律沿用旧代码，只有向数据源要数据时换成新代码；维基百科跟进改名之后，
+# constituents() 也把新代码折回旧代码，所以 raw/ 与 hist/ 里的长历史一直接得上。
+# 起因：2026-10-06 stockanalysis 把 Paramount Skydance 从 PSKY 改成 SKYD（访问 PSKY 返回 400、页面 301 到 SKYD），
+# 维基百科仍写 PSKY。PSKY 连续拉取失败 → 被踢出 sectors.json → 2005 年以来整段历史少了这只票，TOP2、前2% 等
+# 横截面因子全部重算：2026-05-29 红点温度 81.5 → 82.8 跨过门槛，近 2 年触发频率 0.60% → 1.19%。
+# 没写进表里的改名，fetch_one 会顺着数据源页面的 301 自动识别（核对过与本地旧行是同一只票才用），并提示补进来。
+RENAMED = {"PSKY": "SKYD"}
+MOVED = {}      # 本次运行自动识别出的改名 {旧代码: 新代码}
 
 GICS_CN = {
     "Information Technology": "信息技术", "Communication Services": "通信服务",
@@ -112,14 +122,40 @@ def constituents():
         sym, sector = clean(cells[0]), clean(cells[2])
         if re.fullmatch(r"[A-Z][A-Z.\-]{0,6}", sym):
             out[sym.replace(".", "-")] = GICS_CN.get(sector, sector)
+    for old, new in RENAMED.items():          # 维基百科跟进改名后，折回旧代码，见 RENAMED
+        if new in out and old not in out:
+            out[old] = out.pop(new)
     return out
 
 
-def fetch_one(sym, is_etf, rng):
+def _moved(sym, is_etf):
+    """数据源的个股/ETF 页面 301 到了另一个代码 → 新代码；没改名或取不到 → None"""
+    url = f"https://stockanalysis.com/{'etf' if is_etf else 'stocks'}/{sym.lower()}/"
+    try:
+        _pace()
+        req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
+        with urllib.request.urlopen(req, timeout=20, context=CTX) as r:
+            m = re.search(r"/(?:stocks|etf)/([a-z0-9.\-]+)/?$", urllib.parse.urlparse(r.geturl()).path)
+    except Exception:
+        return None
+    new = m.group(1).upper().replace(".", "-") if m else None
+    return new if new and new != sym.upper() else None
+
+
+def _same_stock(local, rows):
+    """改名前后是不是同一只票：与本地旧行重叠的日子里，收盘价（第 3 列，不含分红复权）中位偏差 < 1%"""
+    lo = {r[0]: float(r[2]) for r in local}
+    dev = sorted(abs(float(r[2]) / lo[r[0]] - 1) for r in rows if lo.get(r[0], 0) > 0)
+    return len(dev) >= 20 and dev[len(dev) // 2] < 0.01
+
+
+def fetch_one(sym, is_etf, rng, src=None):
     """→ (sym, rows, err)；rows = [[date, adjclose, close, volume], ...] 新到旧
-    stockanalysis.com 对双类别股（BRK-B、BF-B…）用点号而非连字符，两种写法都试。"""
+    stockanalysis.com 对双类别股（BRK-B、BF-B…）用点号而非连字符，两种写法都试。
+    src：向数据源要数据时用的代码（数据源改过名时与 sym 不同，见 RENAMED）；返回的 sym 始终是文件名用的旧代码。"""
     err = None
-    syms = [sym] if "-" not in sym else [sym, sym.replace("-", ".")]
+    src = src or RENAMED.get(sym, sym)
+    syms = [src] if "-" not in src else [src, src.replace("-", ".")]
     for s_ in syms:
         for kind in (["e", "s"] if is_etf else ["s", "e"]):
             try:
@@ -145,6 +181,16 @@ def fetch_one(sym, is_etf, rng):
                 err = f"HTTP {e.code}"
             except Exception as e:
                 err = str(e)[:70]
+    # 拉不到：看数据源是不是改了代码。本地有旧行的，必须核对是同一只票才用，防止代码被别的公司接手
+    if src == RENAMED.get(sym, sym):
+        new = _moved(src, is_etf)
+        if new:
+            s_, rows, err2 = fetch_one(sym, is_etf, rng, src=new)
+            local = _read_local(sym)
+            if rows and (local is None or _same_stock(local, rows)):
+                MOVED[sym] = new
+                return sym, rows, None
+            err = f"数据源改名为 {new}，但与本地旧行对不上，未采用" if rows else f"数据源改名为 {new}，仍取不到（{err2}）"
     return sym, None, err
 
 
@@ -321,9 +367,21 @@ def main():
         if new_m:
             print(f"   hist/ 新存档 {len(new_m)} 个月份：{new_m[0]} ~ {new_m[-1]}")
 
+    # 当天没拉到、但 raw/（缓存）里有历史的成分股照样留在名单里，只是最近几天没有新行（2026-10-07 加）。
+    # 以前直接踢出 sectors.json：一次网络抖动或数据源改名，引擎就把这只票从 2005 年以来的整段历史里拿掉，
+    # TOP2、前2% 这些横截面因子的历史读数跟着全部改写（PSKY 的教训，见 RENAMED）。
+    # 留下来的代价只在没有新行的那几天：那几天按其余成分股算，和新上市之前的日子一样。
     okset = {s for s, _ in ok}
-    sectors = {s: v for s, v in uni.items() if s in okset}
+    stale = {}
+    for s, _ in fail:
+        loc = _read_local(s) if s in uni else None
+        if loc:
+            stale[s] = max(r[0] for r in loc)
+    sectors = {s: v for s, v in uni.items() if s in okset or s in stale}
     json.dump(sectors, open(os.path.join(BASE, "sectors.json"), "w"), ensure_ascii=False, indent=1)
+    # 给流水线的 status.json 与运行摘要用：哪些标的没拉到、哪些成分股在沿用旧行、哪些是自动识别的改名
+    json.dump({"cutoff": CUTOFF, "failed": sorted(s for s, _ in fail), "stale": stale, "moved": MOVED},
+              open(os.path.join(RAW, "_fetch_report.json"), "w"), ensure_ascii=False)
 
     print("③ 取标普500 TTM 每股收益…")
     try:
@@ -344,6 +402,14 @@ def main():
     print("  行业分布: " + "  ".join(f"{k}{v}" for k, v in sorted(by.items(), key=lambda x: -x[1])))
     if fail:
         print(f"  失败: {[s for s, _ in fail][:12]}{' …' if len(fail) > 12 else ''}")
+        for s, e in fail[:12]:
+            print(f"    {s}: {e}")
+    if stale:
+        print(f"  ! {len(stale)} 只成分股今天没拉到，沿用 raw/ 里的旧行、仍留在样本里（不然整段历史都会少这只票）："
+              + "、".join(f"{s}（最后一行 {d}）" for s, d in sorted(stale.items())))
+    if MOVED:
+        print("  ! 数据源改了代码（本次自动识别，已核对是同一只票）：" + "、".join(f"{o} → {n}" for o, n in MOVED.items())
+              + "。请把它们写进 fetch_sp500.py 的 RENAMED，免得每天先失败一轮再识别")
     print("\n下一步：python3 engine.py")
 
 
