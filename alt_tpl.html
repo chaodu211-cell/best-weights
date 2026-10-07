@@ -84,7 +84,6 @@ svg{display:block}
 .vtile b{display:block;font-family:var(--mono);font-size:22px;font-weight:500;margin:4px 0 3px;color:var(--ink)}
 .vtile em{display:block;font-style:normal;font-size:11.5px;color:var(--ink2);line-height:1.55}
 .vtile em.warn{color:#D19A3E}
-.vcap{margin:6px 0 0;font-size:11px}
 .vh3{font-size:14px;font-weight:500;margin:20px 0 4px}
 .vtab{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
 .vtab th,.vtab td{border-bottom:1px solid var(--border);padding:6px 8px;text-align:left;white-space:nowrap}
@@ -124,6 +123,12 @@ svg{display:block}
 .pticks u{position:absolute;top:0;width:1px;height:4px;background:var(--border-2)}
 .r-pc{font-family:var(--mono);font-size:22px;font-weight:400;text-align:right;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 .r-pc s{display:block;text-decoration:none;font-size:10px;color:var(--ink3);letter-spacing:.05em;margin-top:1px}
+/* 分项可点：点开「分项 + 纳指」走势弹窗 */
+.row.clk{cursor:pointer;transition:background .12s}
+.row.clk:hover{background:var(--surface2)}
+.row.clk:focus-visible{outline:2px solid var(--r2);outline-offset:-2px}
+.r-go{display:block;font-family:var(--mono);font-size:10.5px;font-weight:400;color:var(--ink3);letter-spacing:.04em;margin-top:3px}
+.row.clk:hover .r-go{color:var(--ink2)}
 .inv{display:inline-block;font-family:var(--mono);font-size:9.5px;color:var(--r1);border:1px solid var(--r1);
      border-radius:2px;padding:0 4px;margin-left:6px;vertical-align:1.5px;letter-spacing:.04em}
 
@@ -199,10 +204,30 @@ table.ext .r{white-space:nowrap;font-size:12.5px}
 /* #tip2（纳指图的提示框）原本漏在选择器外，等于一个 position:static 的普通 div：
    一有内容就把下面的整块（实际利率图）往下推 174px，悬浮时页面乱跳，
    而且没有背景板、直接压在图上。两个提示框走同一条规则。 */
-#tip,#tip2{position:absolute;pointer-events:none;opacity:0;transition:opacity .1s;background:#0d141d;
+#tip,#tip2,#tip3{position:absolute;pointer-events:none;opacity:0;transition:opacity .1s;background:#0d141d;
      border:1px solid var(--border-2);border-radius:3px;padding:8px 11px;font-family:var(--mono);
      font-size:11.5px;line-height:1.6;white-space:nowrap;z-index:5;box-shadow:0 6px 20px rgba(0,0,0,.55)}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ---------- 分项走势弹窗 ---------- */
+/* 内边距放在里层 .fd-in：点到 dialog 本身＝点到了遮罩，才能据此关掉 */
+#fdlg{width:min(1040px,calc(100vw - 24px));max-width:none;max-height:calc(100vh - 24px);padding:0;
+  background:var(--bg);color:var(--ink);border:1px solid var(--border-2);border-radius:6px}
+#fdlg::backdrop{background:rgba(3,6,10,.72)}
+body:has(#fdlg[open]){overflow:hidden}
+.fd-in{padding:18px clamp(14px,2.5vw,24px) 16px}
+.fd-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:12px}
+.fd-head .sub{margin:2px 0 0}
+.fd-x{flex:none;width:34px;height:34px;font-size:20px;line-height:1;color:var(--ink2);background:none;
+  border:1px solid var(--border);border-radius:3px;cursor:pointer}
+.fd-x:hover{color:var(--ink);border-color:var(--border-2)}
+.fd-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.fd-tabs button{font-family:var(--sans);font-size:12px;color:var(--ink2);background:var(--surface2);
+  border:1px solid var(--border);border-radius:3px;padding:4px 10px;cursor:pointer}
+.fd-tabs button:hover{color:var(--ink);border-color:var(--border-2)}
+.fd-tabs button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.fd-legend{display:flex;flex-wrap:wrap;gap:6px 20px;margin:0 0 8px;font-size:12px;color:var(--ink2)}
+.fd-legend span{display:inline-flex;align-items:center;gap:7px}
 </style>
 
 <div class="wrap">
@@ -286,10 +311,6 @@ table.ext .r{white-space:nowrap;font-size:12.5px}
     <h2>红点有效性</h2>
     <p class="sub" id="valid-sub"></p>
     <div class="vtiles" id="vtiles"></div>
-    <div class="chart-box" style="margin-top:12px"><svg id="cVH" role="img" aria-label="热端表现"></svg>
-      <p class="sub vcap" id="cap-vh"></p></div>
-    <div class="chart-box" style="margin-top:8px"><svg id="cVC" role="img" aria-label="集中度上升占比"></svg>
-      <p class="sub vcap" id="cap-vc"></p></div>
     <h3 class="vh3">预先登记</h3>
     <p class="sub" id="prereg-sub"></p>
     <div class="vtabwrap" id="prereg"></div>
@@ -301,7 +322,8 @@ table.ext .r{white-space:nowrap;font-size:12.5px}
     右侧标注该项进入哪个温度<b>以及占多少权重</b>：<b>红点</b>＝页面顶部那个数（五项加权，合计 100%）、
     <b>蓝点</b>＝页头并列的那个数（四项加权，合计 100%）、<b>蓝点闸门</b>＝不进任何温度，只作为蓝点的必要条件。
     表里列出的就是全部参与计算的因子——权重为 0 的项已经不在这里。
-    输入日期可查看<b>当天</b>每个因子的原始值与分位；选定日期后，迷你图上的竖线和圆点标出那一天。</p>
+    输入日期可查看<b>当天</b>每个因子的原始值与分位；选定日期后，迷你图上的竖线和圆点标出那一天。
+    <b>点任一分项</b>可打开它与纳指的同图走势，时间范围可调。</p>
     <div class="pickday">
       <label for="pday">查看某一天</label>
       <input type="date" id="pday">
@@ -350,6 +372,30 @@ table.ext .r{white-space:nowrap;font-size:12.5px}
   </section>
 
   <footer id="foot"></footer>
+
+  <dialog id="fdlg" aria-labelledby="fdlg-h">
+    <div class="fd-in">
+      <div class="fd-head">
+        <div><h2 id="fdlg-h"></h2><p class="sub" id="fdlg-sub"></p></div>
+        <button type="button" class="fd-x" id="fdlg-x" aria-label="关闭">×</button>
+      </div>
+      <div class="fd-tabs" id="fdlg-tabs" role="tablist" aria-label="切换分项"></div>
+      <div class="rangebar">
+        <span id="fbtns"></span>
+        <span class="sep" aria-hidden="true"></span>
+        <div class="rslider">
+          <div class="track"></div>
+          <div class="fill" id="ffill"></div>
+          <input type="range" id="fmin" step="1" aria-label="起始日">
+          <input type="range" id="fmax" step="1" aria-label="结束日">
+        </div>
+        <div class="rlabels" id="flabels"></div>
+      </div>
+      <div class="fd-legend" id="fdlg-legend"></div>
+      <div class="chart-box"><div style="position:relative"><svg id="cFac" role="img"></svg><div id="tip3"></div></div></div>
+      <p class="sub" id="fdlg-cap" style="margin:10px 0 0"></p>
+    </div>
+  </dialog>
 </div>
 
 <script>
@@ -791,65 +837,9 @@ function drawTDC(){
       fill:"#E8C24A", stroke:"#05080C", "stroke-width":1.2})); });
 }
 
-/* 红点有效性：三张与纳指图同轴的小图 + 数字卡片 + 预先登记表（2026-09-24） */
+/* 红点有效性：数字卡片 + 预先登记表（2026-09-24）。
+   原来另有与纳指图同轴的小图，2026-10-01、10-07 按用户要求先后全部去掉，只留数字卡片。 */
 const VV = D.validity || null;
-function vChart(id, h, lo, hi, lines, refs, dots, yfmt){
-  const svg = $(id); if (!svg) return;
-  svg.innerHTML = "";
-  const A = RSTART, Bx = REND + 1, D2 = D.series.dates.slice(A, Bx), N2 = D2.length;
-  const m = {t:12, r:14, b:22, l:52}, iw = W - m.l - m.r, ih = h - m.t - m.b;
-  svg.setAttribute("viewBox", `0 0 ${W} ${h}`);
-  svg.setAttribute("width", "100%"); svg.style.minWidth = "560px"; svg.style.height = "auto";
-  const x = i => m.l + (N2 === 1 ? iw/2 : i / (N2 - 1) * iw);
-  const y = z => m.t + (1 - (Math.min(hi, Math.max(lo, z)) - lo) / (hi - lo)) * ih;
-  const ticks = [lo, (lo + hi) / 2, hi];
-  ticks.forEach(z => {
-    svg.appendChild(el("line", {x1:m.l, x2:m.l+iw, y1:y(z), y2:y(z), stroke:"#2A3B4F", "stroke-width":.6, opacity:.6}));
-    const t = el("text", {x:m.l-7, y:y(z)+3.5, "text-anchor":"end", fill:"#56687D", "font-size":10,
-      "font-family":"IBM Plex Mono, monospace"}); t.textContent = yfmt(z); svg.appendChild(t);
-  });
-  refs.forEach(([z, c, lab, da]) => {
-    svg.appendChild(el("line", {x1:m.l, x2:m.l+iw, y1:y(z), y2:y(z), stroke:c, "stroke-width":1,
-      "stroke-dasharray":da || "5 4", opacity:.8}));
-    const t = el("text", {x:m.l+iw, y:y(z)-3, "text-anchor":"end", fill:c, "font-size":9.5,
-      "font-family":"IBM Plex Mono, monospace", opacity:.95}); t.textContent = lab; svg.appendChild(t);
-  });
-  const longSpan = N2 > 400;
-  axisDates(D2, longSpan ? 9 : 7).forEach((i,k,arr) => {
-    const t = el("text", {x:x(i), y:h-6, "text-anchor": k === 0 ? "start" : k === arr.length-1 ? "end" : "middle",
-      fill:"#56687D", "font-size":10, "font-family":"IBM Plex Mono, monospace"});
-    t.textContent = longSpan ? D2[i].slice(0,7) : fmtDate(D2[i]); svg.appendChild(t);
-  });
-  lines.forEach(([V, c, w, da]) => {
-    if (!V) return;
-    const v = V.slice(A, Bx);
-    // 缺值处断开，不把两段硬连起来
-    let seg = [];
-    const flush = () => { if (seg.length > 1) svg.appendChild(el("polyline", {points:seg.join(" "), fill:"none",
-      stroke:c, "stroke-width":w, "stroke-dasharray":da || "", "stroke-linejoin":"round"})); seg = []; };
-    v.forEach((z,i) => { if (z == null) flush(); else seg.push(`${x(i).toFixed(2)},${y(z).toFixed(2)}`); });
-    flush();
-  });
-  (dots || []).forEach(([V, F, c, hollow]) => {
-    if (!V || !F) return;
-    const v = V.slice(A, Bx), f = F.slice(A, Bx), r = N2 > 1200 ? 2.2 : 3;
-    f.forEach((on,i) => { if (on && v[i] != null) svg.appendChild(el("circle", {cx:x(i), cy:y(v[i]), r:hollow ? r+.6 : r,
-      fill:hollow ? "#0A0E14" : c, stroke:c, "stroke-width":hollow ? 1.6 : 0})); });
-  });
-}
-function drawValid(){
-  if (!VV) return;
-  // 2026-10-01 按用户要求去掉「温度与两条门槛」「近 2 年触发频率」两张小图，对应数字卡片保留
-  const S = D.series;
-  // 热端表现（2026-10-01 起替代滚动 IC）
-  const hv = (S.red_hot_edge || []).filter(z => z != null);
-  if (hv.length) vChart("cVH", 120, Math.min(-6, Math.floor(Math.min(...hv))), Math.max(4, Math.ceil(Math.max(...hv))),
-    [[S.red_hot_edge, "#8FA6BD", 1.5]], [[0, "#D19A3E", "0：热端与平时无异"]], [],
-    z => (z > 0 ? "+" : "") + z.toFixed(0) + "pp");
-  if (VV.conc) vChart("cVC", 120, 0, 100, [[S.conc_top2_up, "#8FA6BD", 1.5], [S.conc_topshare_up, "#8FA6BD", 1, "4 3"]],
-    [[VV.conc.up_hi, "#D19A3E", `趋势上升 ${VV.conc.up_hi}%`], [VV.conc.up_lo, "#5FA86B", `回落 ${VV.conc.up_lo}%`, "2 3"]],
-    [], z => z.toFixed(0) + "%");
-}
 (function(){
   if (!VV) return;
   $("validsec").style.display = "";
@@ -868,7 +858,7 @@ function drawValid(){
   $("valid-sub").innerHTML = `回答两件不同的事：<b>红点还适不适合当下这个时代</b>（近 2 年触发频率、热端表现，都是慢变量），
     以及<b>红点亮了之后准不准</b>（预先登记，只看起算日之后的新事件）。另加一种<b>自适应门槛</b>的空心红点与实心红点并列，
     防止温度基数整体漂移后固定门槛整段失声。<b>集中度状态</b>提示 TOP2、前2% 这两个滚动分位因子的读数该怎么解读
-    （集中度一路上升时读数容易长期偏高，高位走平时读数不高不代表不拥挤）。小图都与上方纳指图同一时间轴。`;
+    （集中度一路上升时读数容易长期偏高，高位走平时读数不高不代表不拥挤）。`;
   $("vtiles").innerHTML = [
     ["近 2 年实际触发频率", VV.rate_now == null ? "--" : VV.rate_now.toFixed(2) + "%",
      `设计 ${VV.design_rate}%` + (ratio == null ? "" : ` · 实际/设计 ${ratio.toFixed(2)}`), rateMsg, ratio != null && (ratio < 0.5 || ratio > 2)],
@@ -886,16 +876,6 @@ function drawValid(){
      `（${CC.hist_from} 以来第 ${fz(CI.top2.lvl)} 分位）· 今日读数 ${fz(CI.top2.reading)}`,
      CI.top2.msg + (CI.topshare ? `<br>前2%：${CI.topshare.state}（${fz(CI.topshare.up)}% · 第 ${fz(CI.topshare.lvl)} 分位 · 读数 ${fz(CI.topshare.reading)}）` : ""),
      CI.top2.state_key !== "normal"]] : []).map(([t, b, e1, e2, w]) => `<div class="vtile"><i>${t}</i><b>${b}</b><em>${e1}</em><em class="${w ? "warn" : ""}">${e2}</em></div>`).join("");
-  if (HT) $("cap-vh").innerHTML = `<b>热端表现</b>：过去 ${HT.win} 个交易日里温度 ≥ ${HT.lvl} 的日子，之后 ${HT.fwd} 个交易日 QQQ 收益
-    减同期全部日子的均值（pp），每月更新一次（当月按最新一日）；t 日只用到 t−${HT.fwd} 为止的样本，热端少于 ${HT.min} 天不出数。
-    负值＝热了之后偏弱，红点的方向成立。2026-10-01 起替代原来的滚动 IC：IC 量的是整个分布的单调关系，冷端失灵就能把它拉到 0 附近
-    （2026-02~03 温度很低、市场却继续下跌），而红点只用最热的一小段。参照：2018-26 年 94% 的月份为负、中位 −2.4pp；
-    2008-16 年中位 −0.9pp。热端天数少时读数噪声大。`;
-  if (CC) $("cap-vc").innerHTML = `集中度的<b>上升占比</b>：近一年里原始值高于自己过去一年中位数的天数占比（实线 TOP2，虚线前2%）。
-    ≥ ${CC.up_hi}% 为<b>趋势上升期</b>（读数容易长期偏高），≤ ${CC.up_lo}% 为<b>回落期</b>；介于两者之间时，原始值在
-    ${CC.hist_from} 以来第 ${CC.lvl_hi} 分位以上算<b>高位走平期</b>，否则正常。今日读数 ≥ ${CC.read_hi} 算冒尖——
-    2020-02、2021-11 两个红点顶部都是"高位走平 + 冒尖"。只作提示，不改红点；
-    改读法的试验（去趋势再取分位）没有稳定改善，见 compare_conc.py。`;
   $("prereg-sub").innerHTML = `<b>标准（${P.from} 前定好，此后不改）</b>：以事件首日为单位（相隔 ${VV.fwd} 个交易日以内算同一次），
     看之后 ${VV.fwd} 个交易日 QQQ 收益。前瞻收益已可知的事件累计 ≥ ${P.min_events} 次后，把同样个数的日子随机放在起算日之后的交易日里
     抽 ${P.draws.toLocaleString()} 次，随机均值不高于实际均值的比例就是 p；<b>p &lt; ${P.p_cut} 判通过</b>，否则判未通过。
@@ -1105,6 +1085,14 @@ function rawSub(it){
 }
 const PANEL = D.panel || null;
 const PDATES = D.series.dates, PLAST = PDATES.length - 1;
+let PDAY = PLAST;   // 「查看某一天」选中的下标；分项走势图上用竖线标出
+/* 分项走势图画哪条线：进温度的分项画 252 日分位；VIX 闸门不进温度、没有分位，画收盘原值。
+   两样都没有的分项不可点。 */
+function fSeries(it){
+  if (it.series && it.series.some(v => v != null)) return {v: it.series, pct: true};
+  if (it.key === "vix_gate" && D.series.vix) return {v: D.series.vix, pct: false};
+  return null;
+}
 /* 分项面板。at = D.series.dates 的下标；null 或最后一天 = 最新（直接用引擎下发的 value/pct，
    与页头一致）；其它日子从逐日序列里取——原始值是引擎格式化好的字符串，页面不再重算。 */
 function renderPanel(at){
@@ -1115,7 +1103,8 @@ function renderPanel(at){
     const pct = latest ? it.pct : pick(s, at);
     const val = latest ? it.value : (pick(it.raw_series, at) || "—");
     const r = regOf(pct == null ? 50 : pct);
-    return `<div class="row">
+    const clk = !!fSeries(it);
+    return `<div class="row${clk ? " clk" : ""}"${clk ? ` data-k="${it.key}" role="button" tabindex="0" aria-label="${it.name}：查看与纳指的走势"` : ""}>
       <div class="r-nm"><b>${it.name}</b><em>${it.desc}</em></div>
       <div class="r-rw">${val}<u>${it.sub}</u></div>
       <div class="r-bar">
@@ -1123,7 +1112,7 @@ function renderPanel(at){
         <div class="pticks">${[20,40,60,80].map(t => `<u style="left:${t}%"></u>`).join("")}</div>
         <div style="margin-top:6px">${spark(s, r.hex, latest ? null : at)}</div>
       </div>
-      <div class="r-pc" style="color:${r.hex}">${pct == null ? "—" : pct.toFixed(0)}<s>分位 · ${it.tag}</s></div>
+      <div class="r-pc" style="color:${r.hex}">${pct == null ? "—" : pct.toFixed(0)}<s>分位 · ${it.tag}</s>${clk ? `<span class="r-go">走势 ›</span>` : ""}</div>
     </div>`;
   }).join("");
 }
@@ -1139,6 +1128,7 @@ function dayIndex(str){
 }
 function showDay(str){
   const i = dayIndex(str), d = PDATES[i];
+  PDAY = i;
   renderPanel(i);
   const bits = [];
   if (str && str > PDATES[PLAST]) bits.push(`晚于最新数据，显示最新一天`);
@@ -1215,7 +1205,7 @@ function setRange(a, b, redraw){
   syncSliderUI();
   if ($("hist-sub")) $("hist-sub").textContent = subText();
   $("ndx-sub").textContent = ndxSub();
-  if (redraw !== false){ drawTemp(); drawNdx(); drawRR(); drawTDC(); drawValid(); }
+  if (redraw !== false){ drawTemp(); drawNdx(); drawRR(); drawTDC(); }
 }
 $("rbtns").addEventListener("click", ev => {
   const b = ev.target.closest("button"); if (!b) return;
@@ -1278,5 +1268,215 @@ setRange(RSTART, REND, false);
   $("stratsec").style.display = "";
 } catch (e) { console.error("策略持仓渲染失败", e); } })();   // 出错也不能拖累后面的图表
 
-drawTemp(); drawNdx(); drawRR(); drawTDC(); drawValid();
+/* ---- 分项走势：点分项 → 该分项与纳指同一张图（2026-10-07） ----
+   分项画进温度的 252 日分位（左轴，固定 0~100：随窗口缩放会把 40→60 的小波动放大成满屏），
+   纳指画收盘价（右轴，随窗口缩放）。两条线量纲不同，只能各用一根纵轴；网格线共用，右轴标的是
+   同一条网格线上的纳指价位。时间范围自带一套，第一次打开时取上面纳指图的当前区间，之后各管各的。
+   打开时往地址栏写 #f-<key>：链接能直接指到某个分项，手机上按返回键是关弹窗而不是离开页面。 */
+const FC = {fac: "#9085e9", ndx: "#199e70"};   // 深色底上校验过：色盲 ΔE 17.3、常规视觉 ΔE 24.6
+const NDXS = (D.ndx_label || "QQQ").split("·").pop().trim();
+const FDLG = $("fdlg");
+let FKEY = null, FA = null, FB = null, FPUSHED = false;
+const fItem = k => (PANEL || []).find(p => p.key === k);
+
+function drawFac(){
+  const svg = $("cFac"), it = fItem(FKEY), fs = it && fSeries(it);
+  svg.innerHTML = "";
+  if (!fs) return;
+  const A = FA, Bx = FB + 1, D2 = PDATES.slice(A, Bx), N2 = D2.length;
+  const fv = fs.v.slice(A, Bx), nv = NDX ? NDX.slice(A, Bx) : [];
+  const h = 340, m = {t:26, r:58, b:26, l:46};
+  svg.setAttribute("viewBox", `0 0 ${W} ${h}`);
+  svg.setAttribute("width", "100%"); svg.style.minWidth = "560px"; svg.style.height = "auto";
+  svg.setAttribute("aria-label", `${it.name}与${NDXS}走势，${D2[0]} 至 ${D2[N2-1]}`);
+  const iw = W - m.l - m.r, ih = h - m.t - m.b;
+  const x = i => m.l + (N2 === 1 ? iw/2 : i / (N2 - 1) * iw);
+  // 左轴：分位固定 0~100；VIX 原值按窗口取整到 5
+  const fok = fv.filter(z => z != null);
+  let flo = 0, fhi = 100;
+  if (!fs.pct && fok.length){
+    flo = Math.floor(Math.min(...fok) / 5) * 5; fhi = Math.ceil(Math.max(...fok) / 5) * 5;
+    if (fhi === flo) fhi = flo + 5;
+  }
+  const yf = z => m.t + (1 - (z - flo) / (fhi - flo)) * ih;
+  // 右轴：纳指上下各留 8%
+  const nok = nv.filter(z => z != null);
+  const nlo = nok.length ? Math.min(...nok) : 0, nhi = nok.length ? Math.max(...nok) : 1;
+  const npad = (nhi - nlo) * .08 || 1, n0 = nlo - npad, n1 = nhi + npad;
+  const yn = z => m.t + (1 - (z - n0) / (n1 - n0)) * ih;
+  const txt = (s, a) => { const t = el("text", Object.assign({fill:"#56687D", "font-size":10.5,
+    "font-family":"IBM Plex Mono, monospace"}, a)); t.textContent = s; svg.appendChild(t); };
+
+  // 共用网格：分位 0/25/50/75/100，50 那条虚线加重
+  [0, .25, .5, .75, 1].forEach(f => {
+    const yy = m.t + (1 - f) * ih;
+    svg.appendChild(el("line", {x1:m.l, x2:m.l+iw, y1:yy, y2:yy, stroke:"#2A3B4F",
+      "stroke-width": f === .5 && fs.pct ? 1 : .6, "stroke-dasharray": f === .5 && fs.pct ? "4 3" : "",
+      opacity: f === .5 && fs.pct ? .9 : .5}));
+    const fz = flo + f * (fhi - flo);
+    txt(fs.pct ? fz.toFixed(0) : (+fz.toFixed(1)).toString(), {x:m.l-7, y:yy+3.5, "text-anchor":"end"});
+    if (nok.length) txt(Math.round(n0 + f * (n1 - n0)), {x:m.l+iw+7, y:yy+3.5, "text-anchor":"start"});
+  });
+  // 两根纵轴的归属：轴顶各标一个短线色标 + 文字（文字用墨色，颜色只在色标上）
+  svg.appendChild(el("line", {x1:m.l-40, x2:m.l-28, y1:11, y2:11, stroke:FC.fac, "stroke-width":2.5, "stroke-linecap":"round"}));
+  txt(fs.pct ? "分位" : "VIX", {x:m.l-24, y:14.5, "text-anchor":"start", fill:"#8DA2B8"});
+  if (nok.length){
+    svg.appendChild(el("line", {x1:m.l+iw+44, x2:m.l+iw+56, y1:11, y2:11, stroke:FC.ndx, "stroke-width":2.5, "stroke-linecap":"round"}));
+    txt(NDXS, {x:m.l+iw+40, y:14.5, "text-anchor":"end", fill:"#8DA2B8"});
+  }
+  const longSpan = N2 > 400;
+  const ticks = axisDates(D2, longSpan ? 9 : 7);
+  ticks.forEach((i, k) => txt(longSpan ? D2[i].slice(0,7) : fmtDate(D2[i]),
+    {x:x(i), y:h-8, "text-anchor": k === 0 ? "start" : k === ticks.length - 1 ? "end" : "middle"}));
+
+  // 「查看某一天」选了非最新的日子：竖线标出
+  if (PDAY !== PLAST && PDAY >= A && PDAY < Bx){
+    const xd = x(PDAY - A);
+    svg.appendChild(el("line", {x1:xd, x2:xd, y1:m.t, y2:m.t+ih, stroke:"#E3EAF2", "stroke-width":1, opacity:.35}));
+    txt(PDATES[PDAY], {x:xd, y:m.t-6, "text-anchor": xd > m.l + iw - 60 ? "end" : xd < m.l + 60 ? "start" : "middle", fill:"#8DA2B8"});
+  }
+  // 折线：缺值处断开。纳指先画，分项是主角压在上面
+  const line = (v, y, c, w) => {
+    let seg = [];
+    const flush = () => { if (seg.length > 1) svg.appendChild(el("polyline", {points:seg.join(" "), fill:"none",
+      stroke:c, "stroke-width":w, "stroke-linejoin":"round", "stroke-linecap":"round"})); seg = []; };
+    v.forEach((z, i) => { if (z == null) flush(); else seg.push(`${x(i).toFixed(2)},${y(z).toFixed(2)}`); });
+    flush();
+  };
+  const thin = N2 > 1200;
+  if (nok.length) line(nv, yn, FC.ndx, thin ? 1.1 : 1.6);
+  line(fv, yf, FC.fac, thin ? 1.3 : 2);
+  // 末端点：带一圈底色描边，压在线上也看得清
+  const endDot = (v, y, c) => { for (let i = v.length - 1; i >= 0; i--) if (v[i] != null){
+    svg.appendChild(el("circle", {cx:x(i), cy:y(v[i]), r:4, fill:c, stroke:"#111823", "stroke-width":2})); return; } };
+  if (nok.length) endDot(nv, yn, FC.ndx);
+  endDot(fv, yf, FC.fac);
+
+  // hover：十字线 + 两个圆点 + 读数
+  const cross = el("line", {x1:0, x2:0, y1:m.t, y2:m.t+ih, stroke:"#8DA2B8", "stroke-width":1, "stroke-dasharray":"3 3", opacity:0});
+  const hf = el("circle", {r:4.5, fill:FC.fac, stroke:"#111823", "stroke-width":2, opacity:0});
+  const hn = el("circle", {r:4.5, fill:FC.ndx, stroke:"#111823", "stroke-width":2, opacity:0});
+  svg.appendChild(cross); svg.appendChild(hn); svg.appendChild(hf);
+  // 透明底板接住整块绘图区的指针事件，空白处也能读数
+  const hit = el("rect", {x:m.l, y:m.t, width:iw, height:ih, fill:"transparent"});
+  svg.appendChild(hit);
+  const tip = $("tip3");
+  const sw = c => `<span style="display:inline-block;width:10px;height:3px;border-radius:2px;background:${c};vertical-align:3px;margin-right:6px"></span>`;
+  svg.addEventListener("pointermove", ev => {
+    const bb = svg.getBoundingClientRect();
+    let i = Math.round(((ev.clientX - bb.left) / bb.width * W - m.l) / iw * (N2 - 1));
+    i = Math.max(0, Math.min(N2 - 1, i));
+    const gi = A + i, a = fv[i], b = nv[i];
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("opacity", .55);
+    if (a != null){ hf.setAttribute("cx", x(i)); hf.setAttribute("cy", yf(a)); }
+    hf.setAttribute("opacity", a == null ? 0 : 1);
+    if (b != null){ hn.setAttribute("cx", x(i)); hn.setAttribute("cy", yn(b)); }
+    hn.setAttribute("opacity", b == null ? 0 : 1);
+    const raw = it.raw_series && it.raw_series[gi];
+    tip.innerHTML = `<span style="color:#8DA2B8">${D2[i]}</span><br>` +
+      sw(FC.fac) + (fs.pct ? `${it.name} 分位 ${a == null ? "—" : a.toFixed(1)}` : `VIX 收盘 ${a == null ? "—" : a.toFixed(1)}`) +
+      (fs.pct && raw ? `<br><span style="color:#56687D;padding-left:16px">读数 ${raw}</span>` : "") +
+      (b != null ? `<br>${sw(FC.ndx)}${NDXS} ${b.toFixed(2)}` : "");
+    tip.style.opacity = 1;
+    const lft = x(i) / W * bb.width, yy = a != null ? yf(a) : b != null ? yn(b) : m.t + ih / 2;
+    tip.style.left = (lft > bb.width * .6 ? Math.max(0, lft - tip.offsetWidth - 12) : lft + 12) + "px";
+    tip.style.top = Math.max(0, Math.min(bb.height - tip.offsetHeight, yy / h * bb.height - 10)) + "px";
+  });
+  svg.addEventListener("pointerleave", () => {
+    [cross, hf, hn].forEach(e => e.setAttribute("opacity", 0)); tip.style.opacity = 0;
+  });
+}
+
+/* 弹窗里的时间范围：按钮 + 双滑块，行为照抄上面纳指图那一套 */
+const fmin = $("fmin"), fmax = $("fmax");
+fmin.min = fmax.min = 0; fmin.max = fmax.max = PLAST;
+$("fbtns").innerHTML = RANGES.map(([n,lab]) => `<button type="button" data-n="${n}">${lab}</button>`).join("");
+function fSync(){
+  fmin.value = FA; fmax.value = FB;
+  const l = FA / PLAST * 100, r = FB / PLAST * 100;
+  $("ffill").style.left = l + "%"; $("ffill").style.width = Math.max(0, r - l) + "%";
+  $("flabels").innerHTML = `<b>${PDATES[FA]}</b> – <b>${PDATES[FB]}</b>`;
+  [...$("fbtns").children].forEach(b => { const n = +b.dataset.n;
+    b.setAttribute("aria-pressed", n >= 99999 ? (FA === 0 && FB === PLAST) : (FA === PLAST + 1 - n && FB === PLAST)); });
+}
+function fSetRange(a, b){
+  FA = Math.max(0, Math.min(a, b)); FB = Math.min(PLAST, Math.max(a, b));
+  fSync(); drawFac();
+}
+$("fbtns").addEventListener("click", ev => {
+  const b = ev.target.closest("button"); if (!b) return;
+  const n = +b.dataset.n;
+  fSetRange(n >= 99999 ? 0 : PLAST + 1 - n, PLAST);
+});
+let fRAF = null;
+const fDrag = () => {
+  if (fRAF) return;
+  fRAF = requestAnimationFrame(() => { fRAF = null;
+    let a = +fmin.value, b = +fmax.value;
+    if (b - a < MINGAP){
+      if (document.activeElement === fmin) a = Math.max(0, b - MINGAP);
+      else b = Math.min(PLAST, a + MINGAP);
+    }
+    fSetRange(a, b);
+  });
+};
+fmin.addEventListener("input", fDrag);
+fmax.addEventListener("input", fDrag);
+
+function renderFac(){
+  const it = fItem(FKEY), fs = fSeries(it);
+  $("fdlg-h").textContent = it.name;
+  $("fdlg-sub").textContent = [it.tag, `最新 ${it.value}`, it.pct == null ? "" : `分位 ${it.pct.toFixed(0)}`]
+    .filter(Boolean).join(" · ");
+  $("fdlg-tabs").innerHTML = PANEL.filter(p => fSeries(p)).map(p =>
+    `<button type="button" role="tab" data-k="${p.key}" aria-selected="${p.key === FKEY}">${p.name}</button>`).join("");
+  $("fdlg-legend").innerHTML =
+    `<span><i class="mk line" style="background:${FC.fac}"></i>${fs.pct ? it.name + " · 252 日分位（左轴）" : "VIX 收盘（左轴）"}</span>` +
+    (NDX ? `<span><i class="mk line" style="background:${FC.ndx}"></i>${D.ndx_label || NDXS} 收盘价（右轴）</span>` : "");
+  $("fdlg-cap").innerHTML = `${it.desc}。${it.sub}。` +
+    (fs.pct ? "分位越高＝该维度越热，虚线为 50 分位。" : "") +
+    (PDAY !== PLAST ? `竖线是「查看某一天」选中的 ${PDATES[PDAY]}。` : "");
+  fSync(); drawFac();
+}
+/* how："push" 从分项点进来，新开一层历史；"replace" 弹窗里换分项；"none" 由地址栏驱动 */
+function fOpen(k, how){
+  const it = fItem(k);
+  if (!it || !fSeries(it)) return;
+  FKEY = k;
+  if (FA == null){ FA = RSTART; FB = REND; }
+  if (how === "push" && !FDLG.open){ history.pushState({f:k}, "", "#f-" + k); FPUSHED = true; }
+  else if (how !== "none") history.replaceState(history.state && {f:k}, "", "#f-" + k);
+  if (!FDLG.open) FDLG.showModal();   // 先打开再画：tooltip 定位要读到真实尺寸
+  renderFac();
+}
+// 关弹窗（× / Esc / 点遮罩 / 返回键）都汇到 close 事件里收尾：把地址栏的 #f-xxx 退掉
+FDLG.addEventListener("close", () => {
+  $("tip3").style.opacity = 0;
+  if (!/^#f-/.test(location.hash)) return;
+  if (FPUSHED){ FPUSHED = false; history.back(); }
+  else history.replaceState(null, "", location.pathname + location.search);
+});
+window.addEventListener("popstate", () => {
+  const mh = location.hash.match(/^#f-(\w+)$/);
+  if (mh) fOpen(mh[1], "none");
+  else { FPUSHED = false; if (FDLG.open) FDLG.close(); }
+});
+FDLG.addEventListener("click", ev => { if (ev.target === FDLG) FDLG.close(); });
+$("fdlg-x").addEventListener("click", () => FDLG.close());
+$("fdlg-tabs").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-k]"); if (b) fOpen(b.dataset.k, "replace");
+});
+if (PANEL){
+  const go = ev => {
+    const r = ev.target.closest(".row[data-k]"); if (!r) return;
+    if (ev.type === "keydown"){ if (ev.key !== "Enter" && ev.key !== " ") return; ev.preventDefault(); }
+    fOpen(r.dataset.k, "push");
+  };
+  $("rows").addEventListener("click", go);
+  $("rows").addEventListener("keydown", go);
+  const h0 = location.hash.match(/^#f-(\w+)$/);
+  if (h0) fOpen(h0[1], "none");
+}
+
+drawTemp(); drawNdx(); drawRR(); drawTDC();
 </script>

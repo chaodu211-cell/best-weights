@@ -348,9 +348,7 @@ def patch(d, E, A, log=False):
     }
     # —— 热端表现（2026-10-01 起替代网页上的滚动 IC）：来历见 alt_engine 的 HOT_* 注释 ——
     HE = A.hot_end(temp_alt, tgt["close"].reindex(temp_alt.index))
-    if len(HE):
-        d["series"]["red_hot_edge"] = [num(v, 2) for v in
-                                       HE["edge"].astype(float).reindex(dates, method="ffill").values]
+    if len(HE):   # 2026-10-07 起网页不再画热端表现走势图，只下发最新一期给数字卡片
         r_ = HE.iloc[-1]
         d["validity"]["hot"] = {
             "lvl": A.HOT_LVL, "win": A.HOT_WIN, "min": A.HOT_MIN, "fwd": A.FWD,
@@ -365,8 +363,7 @@ def patch(d, E, A, log=False):
         if col not in rawdf.columns:
             continue
         up, lvl = A.conc_state(rawdf[col])
-        u, l, r = lastv(up), lastv(lvl), lastv(reading)
-        d["series"][f"conc_{key}_up"] = [num(v) for v in up.reindex(dates).values]
+        u, l, r = lastv(up), lastv(lvl), lastv(reading)   # 走势图 2026-10-07 去掉，只留数字卡片
         lab = A.conc_label(None if u is None else float(u), None if l is None else float(l),
                            None if r is None else float(r))
         conc[key] = {"factor": nm, "up": num(u), "lvl": num(l), "reading": num(r),
