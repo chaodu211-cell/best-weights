@@ -156,7 +156,7 @@ def lev_single(idx, lev_pct):
     """红点杠杆因子并入「正股成交额前十」的单股杠杆 ETF（2026-09-30 起，规则与来历见 single_lev.py）。
 
     lev_pct: engine.leverage_monitor 的分位（旧口径，只含 15 只指数杠杆 ETF）。
-    → (拼接后的 lev_pct, 页面用的说明 dict 或 None, 新口径原始量 dict 或 None)。single_lev.FROM 之前的读数原样保留；
+    → (拼接后的 lev_pct, 页面用的说明 dict 或 None, 新口径原始量 dict（ratio/ratio_daily/intensity）或 None)。single_lev.FROM 之前的读数原样保留；
     之后换成新口径的分位——新口径的原始量与它自己同口径的过去 252 日比，不和旧口径混比。
     多空比、交易强度的公式与 leverage.letf_components 完全相同，只是做多/做空两边各加上单股杠杆 ETF 的成交额；
     单股部分为 0 的年份，新旧原始量逐日相同。蓝点的杠杆多空比用返回的原始量另行拼接（blue_lev_splice）。
@@ -196,7 +196,7 @@ def lev_single(idx, lev_pct):
             # 新旧两种口径在同一天的读数，供核对"切换处没有跳变"
             "old_now": {c: (None if c not in lev_pct.columns or not np.isfinite(lev_pct[c].loc[t]) else round(float(lev_pct[c].loc[t]), 1)) for c in ("ratio", "intensity")},
             "new_now": {c: (None if not np.isfinite(new[c].loc[t]) else round(float(new[c].loc[t]), 1)) for c in ("ratio", "intensity")}}
-    return out, info, {"ratio": ratio, "ratio_daily": ratio_daily}
+    return out, info, {"ratio": ratio, "ratio_daily": ratio_daily, "intensity": inten}
 
 
 def blue_lev_splice(adj_like, dirs, ratio, fast):

@@ -482,13 +482,33 @@ def patch(d, E, A, log=False):
         "vix_gate": fmt(vix_s, lambda v: f"{v:.1f}"),
     }
 
+    # 逐日原始值的数值版：点开分项看的走势图画它（2026-10-07 起，原来画分位——分位把当日占比类因子的
+    # 日常波动放大成二三十分的来回跳）。一条线 = {name, unit, dp, v}，杠杆温度没有单一原始值，画多空比与交易强度两条。
+    # 杠杆两条用现行口径（含单股杠杆 ETF）回算整段，免得在 2026-09-30 换口径处凭空跳一截；
+    # 那之前红点实际用的是旧口径（只含 15 只指数杠杆 ETF）的分位。
+    nums = lambda s, n: [num(v, n) for v in s.reindex(dates).values]
+    line = lambda nm, unit, dp, s: None if s is None else {"name": nm, "unit": unit, "dp": dp, "v": nums(s, dp)}
+    lev_src = lev_raw if lev_raw is not None else {"ratio": rawdf.get("leverage"), "intensity": rawdf.get("_lev_intensity")}
+    raw_lines = {
+        "narrow":   [line("SPY 相对 RSP 63 日超额", "%", 2, ew_gap)],
+        "top2":     [line("TOP2行业成交额占比", "%", 1, rawdf["top2"])],
+        "lev":      [line("多空比（5 日均）", "%", 1, lev_src["ratio"]),
+                     line("交易强度（5 日均）", "%", 1, lev_src["intensity"])],
+        "vix_abs":  [line("VIX 收盘", "", 1, vix_s)],
+        "topshare": [line("前2%成交额个股占比", "%", 1, rawdf["_topshare"])],
+        "ma20":     [line("站上MA20占比", "%", 1, rawdf["ma20"])],
+        "erp":      [line("ERP（E/P − 10年期美债）", "%", 2, rawdf["erp"])],
+        "vix_gate": [line("VIX 收盘", "", 1, vix_s)],
+    }
+
     panel = []
     for key, name, desc, tag, s, val, sub in rows:
         panel.append({"key": key, "name": name, "desc": desc, "tag": tag,
                       "value": val, "sub": sub,
                       "pct": (None if s is None else num(s.reindex(dates).iloc[-1])),
                       "series": ([] if s is None else ser(s)),
-                      "raw_series": raw_by_key.get(key)})
+                      "raw_series": raw_by_key.get(key),
+                      "raw_lines": [x for x in raw_lines.get(key, []) if x is not None]})
     d["panel"] = panel
 
     # 杠杆面板的权重标注要跟实际合成一致

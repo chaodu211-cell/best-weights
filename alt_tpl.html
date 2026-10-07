@@ -323,7 +323,7 @@ body:has(#fdlg[open]){overflow:hidden}
     <b>蓝点</b>＝页头并列的那个数（四项加权，合计 100%）、<b>蓝点闸门</b>＝不进任何温度，只作为蓝点的必要条件。
     表里列出的就是全部参与计算的因子——权重为 0 的项已经不在这里。
     输入日期可查看<b>当天</b>每个因子的原始值与分位；选定日期后，迷你图上的竖线和圆点标出那一天。
-    <b>点任一分项</b>可打开它与纳指的同图走势，时间范围可调。</p>
+    <b>点任一分项</b>可打开它的实际读数与纳指的同图走势，时间范围可调。</p>
     <div class="pickday">
       <label for="pday">查看某一天</label>
       <input type="date" id="pday">
@@ -1086,11 +1086,12 @@ function rawSub(it){
 const PANEL = D.panel || null;
 const PDATES = D.series.dates, PLAST = PDATES.length - 1;
 let PDAY = PLAST;   // 「查看某一天」选中的下标；分项走势图上用竖线标出
-/* 分项走势图画哪条线：进温度的分项画 252 日分位；VIX 闸门不进温度、没有分位，画收盘原值。
-   两样都没有的分项不可点。 */
+/* 分项走势图画哪几条线：引擎下发的实际读数 raw_lines（{name, unit, dp, v}，杠杆温度有两条）。
+   旧版 data_alt.json 没有 raw_lines 时退回画分位。都没有的分项不可点。 */
 function fSeries(it){
-  if (it.series && it.series.some(v => v != null)) return {v: it.series, pct: true};
-  if (it.key === "vix_gate" && D.series.vix) return {v: D.series.vix, pct: false};
+  const has = v => v && v.some(z => z != null);
+  if (it.raw_lines && it.raw_lines.some(l => has(l.v))) return {lines: it.raw_lines.filter(l => has(l.v)), pct: false};
+  if (has(it.series)) return {lines: [{name: it.name + " · 分位", unit: "", dp: 1, v: it.series}], pct: true};
   return null;
 }
 /* 分项面板。at = D.series.dates 的下标；null 或最后一天 = 最新（直接用引擎下发的 value/pct，
@@ -1269,36 +1270,43 @@ setRange(RSTART, REND, false);
 } catch (e) { console.error("策略持仓渲染失败", e); } })();   // 出错也不能拖累后面的图表
 
 /* ---- 分项走势：点分项 → 该分项与纳指同一张图（2026-10-07） ----
-   分项画进温度的 252 日分位（左轴，固定 0~100：随窗口缩放会把 40→60 的小波动放大成满屏），
-   纳指画收盘价（右轴，随窗口缩放）。两条线量纲不同，只能各用一根纵轴；网格线共用，右轴标的是
-   同一条网格线上的纳指价位。时间范围自带一套，第一次打开时取上面纳指图的当前区间，之后各管各的。
+   分项画实际读数（左轴，按所选时间段自动缩放），纳指画收盘价（右轴）。两条线量纲不同，只能各用一根纵轴；
+   网格线共用，右轴标的是同一条网格线上的纳指价位。
+   最初画的是进温度的 252 日分位，当天改成实际读数：TOP2、前2% 这类当日占比原始值一天动一两个点，
+   一年的读数又挤在窄区间里，分位一天能跳二三十分，走势看不出来。分位仍在分项表的迷你图和悬浮读数里。
+   时间范围自带一套，第一次打开时取上面纳指图的当前区间，之后各管各的。
    打开时往地址栏写 #f-<key>：链接能直接指到某个分项，手机上按返回键是关弹窗而不是离开页面。 */
 const FC = {fac: "#9085e9", ndx: "#199e70"};   // 深色底上校验过：色盲 ΔE 17.3、常规视觉 ΔE 24.6
 const NDXS = (D.ndx_label || "QQQ").split("·").pop().trim();
 const FDLG = $("fdlg");
 let FKEY = null, FA = null, FB = null, FPUSHED = false;
 const fItem = k => (PANEL || []).find(p => p.key === k);
+// 读数格式：序列里有负数的（市值跑赢等权、ERP）正数带 + 号
+const fFmt = (l, v) => v == null ? "—"
+  : (l.neg && v > 0 ? "+" : "") + v.toFixed(l.dp) + (l.unit || "");
 
 function drawFac(){
   const svg = $("cFac"), it = fItem(FKEY), fs = it && fSeries(it);
   svg.innerHTML = "";
   if (!fs) return;
   const A = FA, Bx = FB + 1, D2 = PDATES.slice(A, Bx), N2 = D2.length;
-  const fv = fs.v.slice(A, Bx), nv = NDX ? NDX.slice(A, Bx) : [];
-  const h = 340, m = {t:26, r:58, b:26, l:46};
+  const ls = fs.lines.map(l => Object.assign({}, l, {w: l.v.slice(A, Bx), neg: l.v.some(v => v != null && v < 0)}));
+  const nv = NDX ? NDX.slice(A, Bx) : [];
+  const h = 340, m = {t:26, r:58, b:26, l:50};
   svg.setAttribute("viewBox", `0 0 ${W} ${h}`);
   svg.setAttribute("width", "100%"); svg.style.minWidth = "560px"; svg.style.height = "auto";
   svg.setAttribute("aria-label", `${it.name}与${NDXS}走势，${D2[0]} 至 ${D2[N2-1]}`);
   const iw = W - m.l - m.r, ih = h - m.t - m.b;
   const x = i => m.l + (N2 === 1 ? iw/2 : i / (N2 - 1) * iw);
-  // 左轴：分位固定 0~100；VIX 原值按窗口取整到 5
-  const fok = fv.filter(z => z != null);
+  // 左轴：实际读数按窗口缩放、上下各留 8%；分位（旧版数据兜底）固定 0~100
+  const fok = [].concat(...ls.map(l => l.w)).filter(z => z != null);
   let flo = 0, fhi = 100;
   if (!fs.pct && fok.length){
-    flo = Math.floor(Math.min(...fok) / 5) * 5; fhi = Math.ceil(Math.max(...fok) / 5) * 5;
-    if (fhi === flo) fhi = flo + 5;
+    const lo = Math.min(...fok), hi = Math.max(...fok), pad = (hi - lo) * .08 || Math.abs(hi) * .05 || 1;
+    flo = lo - pad; fhi = hi + pad;
   }
   const yf = z => m.t + (1 - (z - flo) / (fhi - flo)) * ih;
+  const adp = fs.pct ? 0 : (fhi - flo < 1 ? 2 : fhi - flo < 10 ? 1 : 0);
   // 右轴：纳指上下各留 8%
   const nok = nv.filter(z => z != null);
   const nlo = nok.length ? Math.min(...nok) : 0, nhi = nok.length ? Math.max(...nok) : 1;
@@ -1307,19 +1315,21 @@ function drawFac(){
   const txt = (s, a) => { const t = el("text", Object.assign({fill:"#56687D", "font-size":10.5,
     "font-family":"IBM Plex Mono, monospace"}, a)); t.textContent = s; svg.appendChild(t); };
 
-  // 共用网格：分位 0/25/50/75/100，50 那条虚线加重
+  // 共用网格：五等分；分位口径时 50 那条虚线加重
   [0, .25, .5, .75, 1].forEach(f => {
-    const yy = m.t + (1 - f) * ih;
+    const yy = m.t + (1 - f) * ih, mid = f === .5 && fs.pct;
     svg.appendChild(el("line", {x1:m.l, x2:m.l+iw, y1:yy, y2:yy, stroke:"#2A3B4F",
-      "stroke-width": f === .5 && fs.pct ? 1 : .6, "stroke-dasharray": f === .5 && fs.pct ? "4 3" : "",
-      opacity: f === .5 && fs.pct ? .9 : .5}));
-    const fz = flo + f * (fhi - flo);
-    txt(fs.pct ? fz.toFixed(0) : (+fz.toFixed(1)).toString(), {x:m.l-7, y:yy+3.5, "text-anchor":"end"});
+      "stroke-width": mid ? 1 : .6, "stroke-dasharray": mid ? "4 3" : "", opacity: mid ? .9 : .5}));
+    txt((flo + f * (fhi - flo)).toFixed(adp), {x:m.l-7, y:yy+3.5, "text-anchor":"end"});
     if (nok.length) txt(Math.round(n0 + f * (n1 - n0)), {x:m.l+iw+7, y:yy+3.5, "text-anchor":"start"});
   });
+  // 读数跨过 0（市值跑赢等权、ERP）：0 线画成虚线
+  if (!fs.pct && flo < 0 && fhi > 0)
+    svg.appendChild(el("line", {x1:m.l, x2:m.l+iw, y1:yf(0), y2:yf(0), stroke:"#56687D",
+      "stroke-width":1, "stroke-dasharray":"4 3", opacity:.8}));
   // 两根纵轴的归属：轴顶各标一个短线色标 + 文字（文字用墨色，颜色只在色标上）
-  svg.appendChild(el("line", {x1:m.l-40, x2:m.l-28, y1:11, y2:11, stroke:FC.fac, "stroke-width":2.5, "stroke-linecap":"round"}));
-  txt(fs.pct ? "分位" : "VIX", {x:m.l-24, y:14.5, "text-anchor":"start", fill:"#8DA2B8"});
+  svg.appendChild(el("line", {x1:m.l-44, x2:m.l-32, y1:11, y2:11, stroke:FC.fac, "stroke-width":2.5, "stroke-linecap":"round"}));
+  txt(fs.pct ? "分位" : ls[0].unit === "%" ? "读数 %" : "读数", {x:m.l-28, y:14.5, "text-anchor":"start", fill:"#8DA2B8"});
   if (nok.length){
     svg.appendChild(el("line", {x1:m.l+iw+44, x2:m.l+iw+56, y1:11, y2:11, stroke:FC.ndx, "stroke-width":2.5, "stroke-linecap":"round"}));
     txt(NDXS, {x:m.l+iw+40, y:14.5, "text-anchor":"end", fill:"#8DA2B8"});
@@ -1335,55 +1345,56 @@ function drawFac(){
     svg.appendChild(el("line", {x1:xd, x2:xd, y1:m.t, y2:m.t+ih, stroke:"#E3EAF2", "stroke-width":1, opacity:.35}));
     txt(PDATES[PDAY], {x:xd, y:m.t-6, "text-anchor": xd > m.l + iw - 60 ? "end" : xd < m.l + 60 ? "start" : "middle", fill:"#8DA2B8"});
   }
-  // 折线：缺值处断开。纳指先画，分项是主角压在上面
-  const line = (v, y, c, w) => {
+  // 折线：缺值处断开。纳指先画，分项是主角压在上面；分项有第二条（杠杆的交易强度）画虚线
+  const line = (v, y, c, w, da) => {
     let seg = [];
     const flush = () => { if (seg.length > 1) svg.appendChild(el("polyline", {points:seg.join(" "), fill:"none",
-      stroke:c, "stroke-width":w, "stroke-linejoin":"round", "stroke-linecap":"round"})); seg = []; };
+      stroke:c, "stroke-width":w, "stroke-dasharray":da || "", "stroke-linejoin":"round", "stroke-linecap":"round"})); seg = []; };
     v.forEach((z, i) => { if (z == null) flush(); else seg.push(`${x(i).toFixed(2)},${y(z).toFixed(2)}`); });
     flush();
   };
   const thin = N2 > 1200;
   if (nok.length) line(nv, yn, FC.ndx, thin ? 1.1 : 1.6);
-  line(fv, yf, FC.fac, thin ? 1.3 : 2);
+  ls.slice().reverse().forEach((l, k) => line(l.w, yf, FC.fac, thin ? 1.3 : 2, k === ls.length - 1 ? "" : "6 4"));
   // 末端点：带一圈底色描边，压在线上也看得清
   const endDot = (v, y, c) => { for (let i = v.length - 1; i >= 0; i--) if (v[i] != null){
     svg.appendChild(el("circle", {cx:x(i), cy:y(v[i]), r:4, fill:c, stroke:"#111823", "stroke-width":2})); return; } };
   if (nok.length) endDot(nv, yn, FC.ndx);
-  endDot(fv, yf, FC.fac);
+  ls.forEach(l => endDot(l.w, yf, FC.fac));
 
-  // hover：十字线 + 两个圆点 + 读数
+  // hover：十字线 + 各线圆点 + 读数
   const cross = el("line", {x1:0, x2:0, y1:m.t, y2:m.t+ih, stroke:"#8DA2B8", "stroke-width":1, "stroke-dasharray":"3 3", opacity:0});
-  const hf = el("circle", {r:4.5, fill:FC.fac, stroke:"#111823", "stroke-width":2, opacity:0});
+  const hfs = ls.map(() => el("circle", {r:4.5, fill:FC.fac, stroke:"#111823", "stroke-width":2, opacity:0}));
   const hn = el("circle", {r:4.5, fill:FC.ndx, stroke:"#111823", "stroke-width":2, opacity:0});
-  svg.appendChild(cross); svg.appendChild(hn); svg.appendChild(hf);
+  svg.appendChild(cross); svg.appendChild(hn); hfs.forEach(c => svg.appendChild(c));
   // 透明底板接住整块绘图区的指针事件，空白处也能读数
-  const hit = el("rect", {x:m.l, y:m.t, width:iw, height:ih, fill:"transparent"});
-  svg.appendChild(hit);
+  svg.appendChild(el("rect", {x:m.l, y:m.t, width:iw, height:ih, fill:"transparent"}));
   const tip = $("tip3");
-  const sw = c => `<span style="display:inline-block;width:10px;height:3px;border-radius:2px;background:${c};vertical-align:3px;margin-right:6px"></span>`;
+  const sw = (c, dash) => `<span style="display:inline-block;width:10px;height:0;border-top:3px ${dash ? "dashed" : "solid"} ${c};vertical-align:3px;margin-right:6px"></span>`;
   svg.addEventListener("pointermove", ev => {
     const bb = svg.getBoundingClientRect();
     let i = Math.round(((ev.clientX - bb.left) / bb.width * W - m.l) / iw * (N2 - 1));
     i = Math.max(0, Math.min(N2 - 1, i));
-    const gi = A + i, a = fv[i], b = nv[i];
+    const gi = A + i, b = nv[i];
     cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("opacity", .55);
-    if (a != null){ hf.setAttribute("cx", x(i)); hf.setAttribute("cy", yf(a)); }
-    hf.setAttribute("opacity", a == null ? 0 : 1);
+    ls.forEach((l, k) => { const a = l.w[i];
+      if (a != null){ hfs[k].setAttribute("cx", x(i)); hfs[k].setAttribute("cy", yf(a)); }
+      hfs[k].setAttribute("opacity", a == null ? 0 : 1); });
     if (b != null){ hn.setAttribute("cx", x(i)); hn.setAttribute("cy", yn(b)); }
     hn.setAttribute("opacity", b == null ? 0 : 1);
-    const raw = it.raw_series && it.raw_series[gi];
-    tip.innerHTML = `<span style="color:#8DA2B8">${D2[i]}</span><br>` +
-      sw(FC.fac) + (fs.pct ? `${it.name} 分位 ${a == null ? "—" : a.toFixed(1)}` : `VIX 收盘 ${a == null ? "—" : a.toFixed(1)}`) +
-      (fs.pct && raw ? `<br><span style="color:#56687D;padding-left:16px">读数 ${raw}</span>` : "") +
+    const pc = !fs.pct && it.series && it.series[gi];
+    tip.innerHTML = `<span style="color:#8DA2B8">${D2[i]}</span>` +
+      ls.map((l, k) => `<br>${sw(FC.fac, k > 0)}${l.name} ${fFmt(l, l.w[i])}`).join("") +
+      (pc != null && pc !== false ? `<br><span style="color:#56687D;padding-left:16px">分位 ${pc.toFixed(1)}</span>` : "") +
       (b != null ? `<br>${sw(FC.ndx)}${NDXS} ${b.toFixed(2)}` : "");
     tip.style.opacity = 1;
-    const lft = x(i) / W * bb.width, yy = a != null ? yf(a) : b != null ? yn(b) : m.t + ih / 2;
+    const a0 = ls.map(l => l.w[i]).find(z => z != null);
+    const lft = x(i) / W * bb.width, yy = a0 != null ? yf(a0) : b != null ? yn(b) : m.t + ih / 2;
     tip.style.left = (lft > bb.width * .6 ? Math.max(0, lft - tip.offsetWidth - 12) : lft + 12) + "px";
     tip.style.top = Math.max(0, Math.min(bb.height - tip.offsetHeight, yy / h * bb.height - 10)) + "px";
   });
   svg.addEventListener("pointerleave", () => {
-    [cross, hf, hn].forEach(e => e.setAttribute("opacity", 0)); tip.style.opacity = 0;
+    [cross, hn, ...hfs].forEach(e => e.setAttribute("opacity", 0)); tip.style.opacity = 0;
   });
 }
 
@@ -1430,11 +1441,14 @@ function renderFac(){
     .filter(Boolean).join(" · ");
   $("fdlg-tabs").innerHTML = PANEL.filter(p => fSeries(p)).map(p =>
     `<button type="button" role="tab" data-k="${p.key}" aria-selected="${p.key === FKEY}">${p.name}</button>`).join("");
-  $("fdlg-legend").innerHTML =
-    `<span><i class="mk line" style="background:${FC.fac}"></i>${fs.pct ? it.name + " · 252 日分位（左轴）" : "VIX 收盘（左轴）"}</span>` +
+  $("fdlg-legend").innerHTML = fs.lines.map((l, k) =>
+    `<span><i class="mk line" style="${k ? `background:none;height:0;border-top:3px dashed ${FC.fac}` : `background:${FC.fac}`}"></i>` +
+    `${l.name}（左轴${l.unit ? "，" + l.unit : ""}）</span>`).join("") +
     (NDX ? `<span><i class="mk line" style="background:${FC.ndx}"></i>${D.ndx_label || NDXS} 收盘价（右轴）</span>` : "");
   $("fdlg-cap").innerHTML = `${it.desc}。${it.sub}。` +
-    (fs.pct ? "分位越高＝该维度越热，虚线为 50 分位。" : "") +
+    (fs.pct ? "分位越高＝该维度越热，虚线为 50 分位。"
+            : "左轴是<b>实际读数</b>，按所选时间段自动缩放；红点、蓝点用的是它在过去 252 日里的分位（分项表与悬浮读数里）。") +
+    (FKEY === "lev" ? "两条都按现行口径（含单股杠杆 ETF）回算整段；2026-09-30 以前红点实际用的是旧口径（只含 15 只指数杠杆 ETF）的分位。" : "") +
     (PDAY !== PLAST ? `竖线是「查看某一天」选中的 ${PDATES[PDAY]}。` : "");
   fSync(); drawFac();
 }
