@@ -9,6 +9,10 @@ name: daily
 #   · Claude 的定时任务：北京时间 21:00 前后读取上面那个页面，更新 Artifact，
 #     出现红点 / 空心红点 / 蓝点、或任一分项连续 5 日 > 90 时推送到手机。
 #
+# 准时由外部负责：2026-10 起 GitHub 的定时触发常晚 6 小时以上（10-07 三条 cron 北京 01:45~02:58 才到，
+# 正赶上美股盘中），备份 cron 也一起晚。所以每个工作日北京 19:18 由 Claude 定时任务手动运行（workflow_dispatch）
+# 本工作流；下面三条 cron 只作兜底，晚到时若线上 status.json 显示今天的数据已发布就整趟跳过。
+#
 # raw/ 原始日线不进 git，用 actions/cache 在两次运行之间保存。数据源只给 10 年，更早的部分由 hist/（进 git）
 # 补回：缓存丢了也能从 hist/ 还原出 2004 年起的长历史（hist_store.py）。
 on:
@@ -41,15 +45,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # 两次备份定时运行先看线上 status.json：北京 19:00 之后已有一次抓取成功的发布，就说明今天的数据已到，备份跳过。
-  # 只拦备份那两条 cron；主运行、代码推送、手动运行照常跑。读不到 status.json 时不跳过（宁可多跑一次）。
+  # 定时运行先看线上 status.json：北京 19:00 之后已有一次抓取成功的发布，就说明今天的数据已到，跳过。
+  # 三条 cron 都拦（主运行也可能被 19:18 的手动运行抢先）；代码推送、手动运行照常跑。读不到 status.json 时不跳过（宁可多跑一次）。
   check:
     runs-on: ubuntu-latest
     outputs:
       skip: ${{ steps.check.outputs.skip }}
     steps:
       - id: check
-        if: ${{ github.event_name == 'schedule' && github.event.schedule != '7 11 * * 1-5' }}
+        if: ${{ github.event_name == 'schedule' }}
         run: |
           curl -fsS --retry 3 "https://chaodu211-cell.github.io/best-weights/status.json?t=$(date +%s)" -o status.json || exit 0
           python3 - <<'PY'
@@ -61,7 +65,7 @@ jobs:
           gen = datetime.fromisoformat(st["generated_at"].replace("Z", "+00:00"))
           skip = bool(st.get("fetch_ok")) and gen >= cutoff
           print(f"线上 status.json：截至 {st['as_of']}，生成于 {st['generated_at']}，抓取成功 {st.get('fetch_ok')} → "
-                + ("今天的数据已有，备份跳过" if skip else "还没有今天的数据，备份照跑"))
+                + ("今天的数据已有，跳过" if skip else "还没有今天的数据，照跑"))
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"skip={'true' if skip else 'false'}\n")
           PY
