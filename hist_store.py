@@ -72,7 +72,7 @@ def extend(sym, rows, local=None):
         older = [r for r in local if r[0] < first]
         if older:
             adj = {r[0]: float(r[1]) for r in rows}
-            ks = [adj[r[0]] / float(r[1]) for r in sorted(local) if r[0] in adj and float(r[1]) > 0][:60]
+            ks = [adj[r[0]] / float(r[1]) for r in sorted(local) if adj.get(r[0], 0) > 0 and float(r[1]) > 0][:60]
             if len(ks) >= MIN_OVERLAP and max(ks) / min(ks) - 1 <= MAX_SPREAD:
                 k = sorted(ks)[len(ks) // 2]
                 rows = rows + [[r[0], _fmt(float(r[1]) * k)] + r[2:] for r in older]
