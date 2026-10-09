@@ -280,30 +280,14 @@ body:has(#fdlg[open]){overflow:hidden}
     <div id="rrbox" class="chart-box" style="display:none;margin-top:8px">
       <svg id="cRR" role="img" aria-label="10年期实际利率与重估期"></svg>
       <p class="sub" style="margin:6px 0 0;font-size:11px">
-        10年期TIPS实际利率（美国财政部日频）。橙色底纹＝<b>实际利率重估期</b>，三条同时成立：
-        <b>涨得快</b>——较 <b id="rrwin"></b> 个交易日（约 6 个月）前的变动排进自己过去
-        <b id="rrpctwin"></b> 年分布的前 <b id="rrpct"></b>%；
-        <b>还没走完</b>——水位仍在自己过去 <b id="rrlvlwin"></b> 年分布的
-        <b id="rrlvl"></b> 分位以下<span id="rrnom"></span>。带滞回。
-        前两条比的都是<b>自己的历史</b>而不是固定数字，是为了跨利率环境——旧口径的
-        「实际利率 &lt; 0.5%」是零利率年代的刻度，早就不可能再成立。
-        两条缺一不可：只看速度分不开 2018Q4（好蓝点）与 2022Q1（坏蓝点），
-        只看水位会把 2020-03 疫情底判反。
-        此状态内的蓝点画成空心。</p>
+        10年期TIPS实际利率（美国财政部日频）。橙色底纹＝<b>实际利率重估期</b>，此期间的蓝点画成空心；
+        进入与退出条件见下方「空心蓝点」卡片。</p>
     </div>
     <div id="tdcbox" class="chart-box" style="display:none;margin-top:8px">
       <svg id="cTDC" role="img" aria-label="趋势下跌确认分 TDC"></svg>
       <p class="sub" style="margin:6px 0 0;font-size:11px">
-        <b>TDC · 趋势下跌确认分</b>（0~100）。三条腿等权：<b>内部损伤</b>（成分股站上MA200比例、
-        创52周新低比例、已跌入熊市的成分股比例）、<b>波动中枢</b>（20日已实现波动、20日内跌1%以上
-        的天数、VIX的20日最低值）、<b>趋势结构</b>（距MA200偏离、120日动量、MA50−MA200）。
-        每个因子先做 1260 日滚动分位，所以 TDC 本身<b>不是分位数</b>——70 这条线落在它自己历史的
-        第 77 分位，占全部交易日的 22.7%。
-        <span style="color:#E8C24A">■</span> 黄点＝趋势下跌预警：纳指距 52 周高点回落 6%~13% 且 TDC 过 70 连续 3 日，
-        <b>一轮下跌只报一次</b>，报完要等 TDC 跌回 60（绿虚线）以下才重新武装；
-        确认时纳指已跌破 13% 则本轮作废（报晚了，多半在底部）。
-        它<b>不预告顶部</b>：2018/2020/2022/2025/2026 五次大跌的顶部当天 TDC 是 32/29/45/46/43。
-        代价与反面证据见「趋势下跌确认.md」。</p>
+        <b>TDC · 趋势下跌确认分</b>（0~100），算法见下方「趋势下跌预警」卡片。
+        黄虚线 70 = 报警线，绿虚线 60 = 重新武装线；<span style="color:#E8C24A">■</span> 黄点 = 趋势下跌预警。</p>
     </div>
     <div id="alegend" class="alegend"></div>
   </section>
@@ -896,14 +880,6 @@ function drawRR(){
   // 没有底纹的利率线——那看起来像"从未进入过重估期"，是个会骗人的空图。
   if (!RR || !M0 || !ST) { box.style.display = "none"; rrLink = null; return; }
   box.style.display = "";
-  $("rrwin").textContent = M0.win;
-  $("rrpctwin").textContent = (M0.pct_win / 252).toFixed(0);
-  $("rrpct").textContent = 100 - M0.pct_th;
-  $("rrlvlwin").textContent = (M0.lvl_win / 252).toFixed(0);
-  $("rrlvl").textContent = M0.lvl_th;
-  // 名义同向那一条挡掉的是 2020-03 那种通胀预期崩塌型上行（名义在跌，实际在涨）
-  $("rrnom").innerHTML = M0.need_nominal
-    ? "；<b>是紧缩不是通缩</b>——同期名义10年期美债也在上行" : "";
   svg.innerHTML = "";
   const A = RSTART, Bx = REND + 1, v = RR.slice(A, Bx), D2 = D.series.dates.slice(A, Bx), N2 = v.length;
   // t 比其余图大，是给顶部那行悬浮读数留的带子——否则利率线走到高位时会和读数叠在一起
