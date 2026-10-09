@@ -321,13 +321,10 @@ def patch(d, E, A, log=False):
     d["alerts"]["rules"].append({
         "key": "hot_ad", "name": "空心红点（自适应门槛）", "mark": "dot", "hollow": True,
         "color": red_rule["color"], "persist": A.ALT_PERSIST,
-        "desc": (f"同一个红点温度，门槛换成<b>自适应</b>的：取前一日及以前 {A.AD_WIN // 252} 年"
-                 f"（至少 {A.AD_MINP // 252} 年）连 3 日温度的第 {100 - A.ALT_DESIGN_RATE * 100:.1f} 分位，"
-                 f"让触发频率保持在设计值 {A.ALT_DESIGN_RATE:.1%} 附近，只用当时已有的数据。"
-                 f"与实心红点<b>并列显示、不替换</b>：两者同时成立时画实心。"
-                 f"用途是防止温度基数整体漂移后固定门槛整段失声——2007-2016 长面板上 81.7 十年只亮 2 天，"
-                 f"自适应门槛亮 64 天、后 30 日比基准低 1.8pp，下跌顶多抓到 2010-04、2012-04、2015-07 三个；"
-                 f"代价是 2017 后比固定门槛弱约 2.5pp。")})
+        "desc": (f"<b>触发</b>：红点温度 > 自适应门槛，连续 {A.ALT_PERSIST} 个交易日。<br>"
+                 f"<b>自适应门槛</b> = 前一日及以前 {A.AD_WIN // 252} 年（至少 {A.AD_MINP // 252} 年）"
+                 f"「连 {A.ALT_PERSIST} 日最低温度」的第 {100 - A.ALT_DESIGN_RATE * 100:.1f} 分位，"
+                 f"使触发频率约为 {A.ALT_DESIGN_RATE:.1%}。与实心红点同时成立时画实心。")})
     d["series"]["th_adaptive"] = ser(V["th_ad"])
     d["series"]["red_rate_2y"] = [num(v, 2) for v in V["rate"].reindex(dates).values]
     d["series"]["red_ic"] = [num(v, 3) for v in V["ic"].reindex(dates).values]
@@ -388,41 +385,37 @@ def patch(d, E, A, log=False):
     for r in d["alerts"]["rules"]:
         if r["key"] == "hot":
             r["name"] = "红点预警（最优拟合）"
+            lo, mid, hi = A.VIX_ANCHORS
             r["desc"] = (
-                f"最优拟合红点温度 > {A.ALT_TH:g}，连续 {A.ALT_PERSIST} 个交易日。"
-                f"温度 = {wtxt}（合计 100%）。"
-                f"其中<b>杠杆温度</b>内部按「多空比 : 交易强度 = {li:g} : {lj:g}」合成"
-                f"（不是 leverage.py 的 3:1，实测这一处值 2.65pp）；"
-                f"<b>VIX</b>用固定锚点 {'/'.join(f'{x:g}' for x in A.VIX_ANCHORS)} 映射，不是滚动分位；"
-                f"<b>市值加权跑赢等权</b>保留「只在上涨市成立、下跌市记中性 50」的语义；"
-                f"等权一侧 2026-10-01 起用真实等权 ETF {A.EW_SYM}（原为当前成分股自建篮子，有幸存者偏差），"
-                f"门槛随之按同频重标为 {A.ALT_TH:g}。"
-                f"权重按前瞻 {H} 个交易日、以 {TARGET} 为标的标定。"
-                f"站上MA20、换手率、宽度恶化、贴近峰值四项扫出来的权重都是 0，未参与。"
-                + (f"<b>{lev_single['from']} 起</b>杠杆温度并入正股成交额前 {lev_single['top_n']} 只股票"
-                   f"（没有杠杆 ETF 的顺延）的全部单股杠杆 ETF：做多的加进做多、做空的加进做空；"
-                   f"此前的读数原样保留，之后的分位与同口径的过去 252 日比；这一处没有单独重标门槛。"
-                   if lev_single else ""))
+                f"<b>触发</b>：红点温度 > {A.ALT_TH:g}，连续 {A.ALT_PERSIST} 个交易日。<br>"
+                f"<b>红点温度</b> = " + " + ".join(f"{A.LABELS[k]} × {pc[k]:.0f}%" for k in
+                                                   sorted(A.ALT_W, key=lambda k: -A.ALT_W[k])) + "。<br>"
+                f"除 VIX 外，各项都取过去 {E.WINDOW} 个交易日的滚动分位（0~100）：<br>"
+                f"<b>杠杆温度</b> = 多空比分位 × {li / (li + lj):.0%} + 交易强度分位 × {lj / (li + lj):.0%}"
+                f"（多空比 = 做多杠杆 ETF 成交额 ÷ 杠杆 ETF 总成交额，交易强度 = 杠杆 ETF 总成交额 ÷ SPY、QQQ 成交额，"
+                f"均取 5 日均；杠杆 ETF 含 15 只指数杠杆 ETF 与正股成交额前 {lev_single['top_n'] if lev_single else 10} 只股票的单股杠杆 ETF）<br>"
+                f"<b>TOP2抱团</b> = 成交额最大的两个 GICS 行业占全部成分股成交额的比例<br>"
+                f"<b>前2%成交额占比</b> = 当日成交额最大的前 2% 成分股占全部成交额的比例<br>"
+                f"<b>VIX绝对刻度</b> = 100 − 按 VIX {lo:g}/{mid:g}/{hi:g} 对应 0/50/100 分段线性映射（VIX 越低越热）<br>"
+                f"<b>市值加权跑赢等权</b> = (1 + SPY 近 {E.NT_WIN} 日收益) ÷ (1 + {A.EW_SYM} 近 {E.NT_WIN} 日收益) − 1，"
+                f"SPY 近 {E.NT_WIN} 日下跌时记 50")
         elif r["key"] == "cold":
             r["name"] = "蓝点预警（最优拟合）"
             r["desc"] = (
-                f"蓝点温度（当日口径）< {A.BLUE_TH:g} 且 VIX ≥ {E.VIX_COLD}，"
-                f"{'当日成立即触发' if E.PERSIST_COLD <= 1 else f'连续 {E.PERSIST_COLD} 个交易日'}。"
-                f"温度 = {btxt}（<b>四项等权</b>，各 1/4）。"
-                f"其中杠杆多空比取<b>当日未平滑值</b>（另三项本就是当日值）。"
-                f"<b>VIX ≥ {E.VIX_COLD} 是独立闸门，不进温度</b>——它是外生的绝对刻度，"
-                f"实测只用这道闸门就有 +6.2pp 边际，温度筛选再加约 5.6pp。"
-                f"相比原来的六项等权，<b>删掉了换手率与上涨个股占比</b>："
-                f"前者恐慌与狂热都会暴增、方向不可知，后者在 VIX ≥ {E.VIX_COLD} 的日子里"
-                f"几乎必然极低、等于常数，两者都不含底部信息。"
-                f"留下的四项覆盖定位（杠杆多空比、站上MA20、TOP2抱团）与估值（ERP）两个维度。"
-                f"扫描的局部最优是把多空比加到 50%，只再值 1.07pp 且与全网格证据矛盾"
-                f"（多空比单因子秩相关 −0.041，ERP 是 −0.336），故未采纳。"
-                f"口径按前瞻 {H} 个交易日、以 {TARGET} 为标的检验。"
-                f"【只在训练窗验证过：42 天只有 6~7 个独立事件，标准误约 4.1pp】"
-                + (f"<b>{lev_single['from']} 起</b>杠杆多空比与红点同口径，并入正股成交额前 {lev_single['top_n']} 只股票"
-                   f"的单股杠杆 ETF；此前的读数原样保留。单股产品上市（2022-08）以来 31 个 VIX ≥ {E.VIX_COLD} 的日子里，"
-                   f"两种口径的蓝点逐日相同。" if lev_single else ""))
+                f"<b>触发</b>：蓝点温度 &lt; {A.BLUE_TH:g} 且 VIX 收盘 ≥ {E.VIX_COLD}，"
+                f"{'当日成立即触发' if E.PERSIST_COLD <= 1 else f'连续 {E.PERSIST_COLD} 个交易日'}。<br>"
+                f"<b>蓝点温度</b> = (" + " + ".join(f"{A.BLUE_LABELS[k]}分位" for k in A.BLUE_W) + f") ÷ {len(A.BLUE_W)}，"
+                f"其中 ERP 分位取 100 − 分位（估值越贵越热），杠杆多空比取当日值（不平滑），"
+                f"各项为过去 {E.WINDOW} 个交易日的滚动分位。<br>"
+                f"ERP = 标普500 TTM 盈利收益率 − 10 年期美债收益率；站上MA20占比 = 收盘价在 20 日均线之上的成分股比例。<br>"
+                f"VIX 只作闸门，不进温度。实际利率重估期内画成空心蓝点。")
+        elif r["key"] == "cold_soft":
+            r["desc"] = (
+                f"<b>触发</b>：蓝点条件成立，且当天处于<b>实际利率重估期</b>。<br>"
+                f"<b>进入</b>重估期需同时满足：10 年期实际利率 {E.RR_WIN} 日变动在过去 {E.RR_PCT_WIN // 252} 年中的分位 > {E.RR_PCT_TH}"
+                f"、且涨幅 > {E.RR_MIN_RISE:g} 个百分点；实际利率水位在过去 {E.RR_LVL_WIN // 252} 年中的分位 &lt; {E.RR_LVL_TH}"
+                + (f"；名义 10 年期美债同期上行" if E.RR_NEED_NOMINAL else "") +
+                f"。<br><b>退出</b>：变动分位 &lt; {E.RR_PCT_EXIT} 或水位分位 > {E.RR_LVL_EXIT}。")
 
     # —— ③ 按实际计算重建分项面板 ——
     raw_pct = lambda c: (rawdf[c].reindex(dates) if c in rawdf.columns else None)

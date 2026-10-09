@@ -71,7 +71,8 @@ h2{margin:0 0 4px;font-size:15px;font-weight:500;letter-spacing:.03em}
 svg{display:block}
 .alegend{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-top:14px}
 .acard{border:1px solid var(--border);border-radius:4px;background:var(--surface);padding:12px 14px}
-.acard b{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:500;margin-bottom:5px}
+.acard > b{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:500;margin-bottom:5px}
+.acard em b{font-weight:500;color:var(--ink2)}
 .acard em{display:block;font-style:normal;font-size:11.5px;color:var(--ink3);line-height:1.55}
 .acard u{display:block;text-decoration:none;font-family:var(--mono);font-size:11.5px;color:var(--ink2);margin-top:7px}
 .mk{width:13px;height:13px;flex:none;border-radius:50%}
@@ -342,7 +343,7 @@ body:has(#fdlg[open]){overflow:hidden}
           <li>每个指标计算滚动 <code>252</code> 日分位数，把绝对值转成相对历史水平的百分位。</li>
           <li>ERP 分位取反向 <code>100 − pct</code>，使其与其他指标方向一致（高值＝情绪热）。</li>
           <li><strong style="color:var(--ink)">活跃度指标按市场方向定向</strong>：换手率与杠杆资金对恐慌和狂热同样敏感，方向不可知。对<em style="font-style:normal;color:var(--ink)">高于常态</em>的部分乘以方向系数 <code>d = tanh(r₂₀ / 1.5σ)</code>；低于常态的部分记为中性 50。</li>
-          <li>杠杆多空比、TOP2抱团、站上MA20、风险溢价四项分位<strong style="color:var(--ink)">等权平均</strong>（各 25%），得到<strong style="color:var(--ink)">蓝点温度</strong>；蓝点看它的当日不平滑口径。相比原口径删掉了换手率与上涨个股占比，理由见预警卡片。</li>
+          <li>杠杆多空比、TOP2抱团、站上MA20、风险溢价四项分位<strong style="color:var(--ink)">等权平均</strong>（各 25%），得到<strong style="color:var(--ink)">蓝点温度</strong>；蓝点看它的当日不平滑口径。</li>
           <li>另按 <code id="sellw"></code> 加权合成<strong style="color:var(--ink)">红点温度</strong>（页面顶部显示的就是它，红点据此触发）。</li>
           <li>按 <span id="bandtxt"></span> 划分五个情绪区间。</li>
         </ol>
@@ -350,8 +351,7 @@ body:has(#fdlg[open]){overflow:hidden}
       <div class="card">
         <h3>三类预警各用各的参数</h3>
         <p><strong style="color:var(--ink)">顶是慢过程，底是快事件。</strong>情绪见顶靠多日堆积，过滤毛刺有价值；恐慌见底常是 1–3 天的插针，平滑和多日确认恰好把尖峰削平。用同一套参数必然顾此失彼。</p>
-        <p><strong style="color:var(--ink)">红点</strong>用<em style="font-style:normal;color:var(--ink)">红点温度</em> + 连续3日确认；<strong style="color:var(--ink)">蓝点</strong>用<em style="font-style:normal;color:var(--ink)">蓝点温度的当日口径</em>（换手率、上涨占比、杠杆多空比取当日值不平滑）且当日成立即触发。页面顶部显示红点温度，蓝点温度并列在它下方。</p>
-        <p><strong style="color:var(--ink)">本页与生产页面的三处差别。</strong>一，红点温度换了权重：删掉<em style="font-style:normal;color:var(--ink)">站上MA20</em>与<em style="font-style:normal;color:var(--ink)">换手率</em>两格；上涨拥挤度内部只留「市值跑赢等权」（宽度恶化与贴近峰值扫出来权重都是 0，但<b>只在上涨市成立、下跌市填 50</b> 这道语义门闸保留；等权一侧 2026-10-01 起用真实等权 ETF RSP，不再用当前成分股自建）；<b>杠杆温度内部从 3:1 改成多空比:交易强度 = 1:1</b>，单这一处就值 2.65pp；腾出的权重给<em style="font-style:normal;color:var(--ink)">杠杆温度</em>、<em style="font-style:normal;color:var(--ink)">VIX 绝对刻度</em>与<em style="font-style:normal;color:var(--ink)">前2%成交额个股占比</em>，门槛随之从 75 抬到 81.7（不重标门槛等于偷偷放宽），2026-10-01 换 RSP 后按同频重标为 82.5。二，<strong style="color:var(--ink)">没有黑框预警</strong>。三，没有温度走势图。蓝点、实际利率重估期分级、杠杆面板与生产页面完全一致。</p>
+        <p><strong style="color:var(--ink)">红点</strong>用<em style="font-style:normal;color:var(--ink)">红点温度</em> + 连续3日确认；<strong style="color:var(--ink)">蓝点</strong>用<em style="font-style:normal;color:var(--ink)">蓝点温度的当日口径</em>（杠杆多空比取当日值不平滑）且当日成立即触发。页面顶部显示红点温度，蓝点温度并列在它下方。</p>
       </div>
       <div class="card">
         <h3>方向系数 d</h3>
