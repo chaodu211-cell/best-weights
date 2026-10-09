@@ -267,8 +267,8 @@ def patch(d, E, A, log=False):
     d["alerts"]["rules"] = [r for r in d["alerts"]["rules"] if r["key"] != "crowd"]
 
     # —— 蓝点也换权重（BLUE_W），闸门 VIX >= VIX_COLD 不动 ——
-    bt_fast = A.blue_temperature(adjf)          # 判定用：当日未平滑口径
-    bt_show = A.blue_temperature(adj_blue)      # 展示用：平滑口径
+    bt_fast = A.blue_temperature(adjf, judge=True)        # 判定用：当日未平滑口径，ERP 封顶 BLUE_ERP_CAP
+    bt_show = A.blue_temperature(adj_blue, judge=False)   # 展示用：平滑口径，不封顶
     if bt_fast is None or bt_show is None:
         sys.exit("蓝点温度算不出来：BLUE_W 里的分项缺失")
     vix_all = E.load_vix(dates)
@@ -404,9 +404,10 @@ def patch(d, E, A, log=False):
                 f"<b>触发</b>：蓝点温度 &lt; {A.BLUE_TH:g} 且 VIX 收盘 ≥ {E.VIX_COLD}，"
                 f"{'当日成立即触发' if E.PERSIST_COLD <= 1 else f'连续 {E.PERSIST_COLD} 个交易日'}。<br>"
                 f"<b>蓝点温度</b> = (" + " + ".join(f"{A.BLUE_LABELS[k]}分位" for k in A.BLUE_W) + f") ÷ {len(A.BLUE_W)}，"
-                f"其中 ERP 分位取 100 − 分位（估值越贵越热），杠杆多空比取当日值（不平滑），"
-                f"各项为过去 {E.WINDOW} 个交易日的滚动分位。<br>"
-                f"ERP = 标普500 TTM 盈利收益率 − 10 年期美债收益率；站上MA20占比 = 收盘价在 20 日均线之上的成分股比例。<br>"
+                f"其中 ERP 分位取 100 − 分位（估值越贵越热），高于 {A.BLUE_ERP_CAP:g} 记 {A.BLUE_ERP_CAP:g}（只计便宜一侧）；"
+                f"杠杆多空比取当日值（不平滑），各项为过去 {E.WINDOW} 个交易日的滚动分位。<br>"
+                f"ERP = 标普500 名义 TTM 每股收益 ÷ 标普500 点位（SPY 未复权收盘 × 10）− 10 年期美债收益率；"
+                f"站上MA20占比 = 收盘价在 20 日均线之上的成分股比例。<br>"
                 f"VIX 只作闸门，不进温度。实际利率重估期内画成空心蓝点。")
         elif r["key"] == "cold_soft":
             r["desc"] = (
@@ -450,7 +451,7 @@ def patch(d, E, A, log=False):
         ("ma20", "站上MA20占比", "中期趋势宽度", f"蓝点 {bpc['ma20']:.0f}%", adjf["ma20"],
          f"{num(rawdf['ma20'].reindex(dates).iloc[-1])}%", "当日占比"),
         ("erp", "风险溢价 ERP", "估值性价比（反向）", f"蓝点 {bpc['erp']:.0f}%", adjf["erp"],
-         f"{num(rawdf['erp'].reindex(dates).iloc[-1], 2)}%", "E/P − 10年期美债；分位已反向"),
+         f"{num(rawdf['erp'].reindex(dates).iloc[-1], 2)}%", f"E/P − 10年期美债（名义 EPS ÷ 未复权价）；分位已反向，蓝点判定时高于 {A.BLUE_ERP_CAP:g} 记 {A.BLUE_ERP_CAP:g}"),
         ("vix_gate", "VIX 收盘", "蓝点的独立闸门", f"蓝点闸门 ≥{E.VIX_COLD}", None,
          f"{num(vix_s.iloc[-1])}", "不进任何温度，只作为蓝点的必要条件"),
     ]

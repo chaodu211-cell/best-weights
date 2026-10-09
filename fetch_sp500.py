@@ -6,7 +6,7 @@
 数据源：
     en.wikipedia.org        成分股名单 + GICS 行业
     stockanalysis.com/api   10 年日线（免 key，返回含拆股/分红复权价）
-    www.multpl.com          标普500 TTM 每股收益（月频，用于 ERP）
+    www.multpl.com          标普500 TTM 每股收益（月频，用于 ERP）与 CPI-U（把它给的实际 EPS 换回名义值）
 
 用法：
     python3 fetch_sp500.py --check      # 连通性自检
@@ -261,18 +261,50 @@ def fetch_one_incremental(sym, is_etf):
     return sym, merged, None, False
 
 
-def fetch_eps():
-    """multpl 标普500 TTM 每股收益（月频）"""
-    html = get("https://www.multpl.com/s-p-500-earnings/table/by-month", pace=False)
-    rows = []
+MULTPL_EPS = "https://www.multpl.com/s-p-500-earnings/table/by-month"
+MULTPL_CPI = "https://www.multpl.com/cpi/table/by-month"
+
+
+def _multpl_table(html):
+    """multpl 的月表 → [[YYYY-MM-DD, 值], ...] 新到旧"""
     MON = {m: i + 1 for i, m in enumerate(
         ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])}
+    rows = []
     for mo, dd, yy, val in re.findall(
             r"<td[^>]*>\s*([A-Z][a-z]{2})\s+(\d{1,2}),\s*(\d{4})\s*</td>\s*"
             r"<td[^>]*>(?:\s|&#x2002;|&nbsp;)*(-?[\d.]+)", html):
         rows.append([f"{yy}-{MON[mo]:02d}-{int(dd):02d}", val])
     rows.sort(reverse=True)
     return rows
+
+
+def fetch_eps():
+    """multpl 标普500 TTM 每股收益（月频）→ (实际值行, 名义值行, 说明)。
+
+    multpl 这张表是**实际** EPS：页面注明 "inflation adjusted, constant <月>, <年> dollars"，每月按最新 CPI 整段重新折算。
+    ERP 拿它去除名义价格，越早的 E/P 越被抬高，所以要先换回名义值（2026-10-09 起）：
+        名义 = 实际 × 当月 CPI ÷ 基准月 CPI
+    CPI 用同一网站的 CPI-U（未季调）月表，与 FRED CPIAUCNS 1362 个月逐月一致；比 CPI 表更新的月份用最新一个月的 CPI。
+    换算失败时第二项为 None，调用方保留已有的名义文件。"""
+    html = get(MULTPL_EPS, pace=False)
+    real = _multpl_table(html)
+    if not real:
+        raise ValueError("EPS 表解析为空")
+    try:
+        m = re.search(r"constant\s+([A-Z][a-z]+),?\s+(\d{4})\s+dollars", re.sub(r"<[^>]+>", " ", html))   # "constant" 是个链接
+        if not m:
+            raise ValueError("页面上找不到 constant <月>, <年> dollars")
+        ref = datetime.strptime(f"{m.group(1)} {m.group(2)}", "%B %Y").strftime("%Y-%m")
+        cpi = {d[:7]: float(v) for d, v in _multpl_table(get(MULTPL_CPI, pace=False))}
+        if ref not in cpi:
+            raise ValueError(f"CPI 表里没有基准月 {ref}")
+        last = max(cpi)
+        nom = [[d, f"{float(v) * cpi.get(d[:7], cpi[last] if d[:7] > last else float('nan')) / cpi[ref]:.4f}"]
+               for d, v in real]
+        nom = [r for r in nom if r[1] != "nan"]
+        return real, nom, f"基准 {ref} 美元，CPI 到 {last}"
+    except Exception as e:
+        return real, None, f"名义换算失败（{e}）"
 
 
 def main():
@@ -289,7 +321,7 @@ def main():
         print("连通性自检：")
         for nm, u in [("en.wikipedia.org", WIKI),
                       ("stockanalysis.com", HIST.format(kind="s", sym="aapl", rng="1Y")),
-                      ("www.multpl.com", "https://www.multpl.com/s-p-500-earnings/table/by-month")]:
+                      ("www.multpl.com", MULTPL_EPS), ("www.multpl.com（CPI）", MULTPL_CPI)]:
             try:
                 t = get(u, timeout=20, retries=1, pace=False)
                 print(f"  ✅ {nm}  ({len(t)} 字节)")
@@ -385,12 +417,18 @@ def main():
 
     print("③ 取标普500 TTM 每股收益…")
     try:
-        eps = fetch_eps()
+        eps, eps_nom, note = fetch_eps()
         with open(os.path.join(RAW, "_sp500_eps.csv"), "w") as fh:
             fh.write("\n".join(",".join(r) for r in eps) + "\n")
         print(f"   {len(eps)} 个月  {eps[-1][0]} → {eps[0][0]}")
+        if eps_nom:
+            with open(os.path.join(RAW, "_sp500_eps_nominal.csv"), "w") as fh:
+                fh.write("\n".join(",".join(r) for r in eps_nom) + "\n")
+            print(f"   名义值（ERP 用）：{note}")
+        else:
+            print(f"   ! {note}，沿用已有 _sp500_eps_nominal.csv")
     except Exception as e:
-        print(f"   ! 失败（{e}），沿用已有 _sp500_eps.csv")
+        print(f"   ! 失败（{e}），沿用已有 _sp500_eps.csv 与 _sp500_eps_nominal.csv")
 
     lens = sorted(n for _, n in ok)
     tag = f"（增量，其中 {fulls} 只因复权重算或本地过短走了全量）" if inc else "（全量）"

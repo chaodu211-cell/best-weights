@@ -513,9 +513,23 @@ def load_shares():
     return {r.ticker.strip().upper(): float(r.shares) for r in df.itertuples() if np.isfinite(r.shares)}
 
 
+# SPY 未复权收盘的回填：raw/ 里 2016-09-16 以前的「原始收盘价」来自 stooq 种子、按复权刻度缩放过（比真实低 10~30%），
+# 不能用。这一段改取 Yahoo 的 SPY 收盘（SPY 从未拆股，Yahoo 的 close 即未复权价；与 raw/ 重叠的十年逐日一致）。
+SPY_RAW_BACKFILL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hist", "SPY_rawclose_2004-2016.csv")
+
+
 def build_erp(idx, spy):
-    """ERP = E/P − 10Y。EPS 用标普500 TTM 每股收益（月频，前向填充），指数用 SPY 收盘价换算。"""
-    eps_p = os.path.join(RAW, "_sp500_eps.csv")
+    """ERP = E/P − 10Y。EPS 用标普500 名义 TTM 每股收益（月频，前向填充），指数用 SPY 未复权收盘 × 10。
+
+    2026-10-09 修正两处口径（此前与 us2 原版相同）：
+      · multpl 给的是「按最新一个月 CPI 折算的实际 EPS」，拿去除名义价格，越早的 E/P 越被抬高（2017 年的 ERP 平均偏高约 2.4 个百分点）。
+        现读 fetch_sp500.py 按 CPI-U 换回的名义值 _sp500_eps_nominal.csv；缺这个文件时退回实际 EPS 并提示。
+      · 价格原先用复权收盘，历史价格被分红调低，同样抬高了早年的 E/P。现用未复权收盘，2016-09-16 以前见 SPY_RAW_BACKFILL。
+    """
+    eps_p = os.path.join(RAW, "_sp500_eps_nominal.csv")
+    if not os.path.exists(eps_p):
+        print("  ! 缺 raw/_sp500_eps_nominal.csv，ERP 退回用实际 EPS（早年数值偏高）；跑一次 fetch_sp500.py 即可补上")
+        eps_p = os.path.join(RAW, "_sp500_eps.csv")
     y_p = os.path.join(RAW, "_dgs10.csv")
     if spy is None or not os.path.exists(eps_p) or not os.path.exists(y_p):
         return None
@@ -530,8 +544,15 @@ def build_erp(idx, spy):
 
     eps_d = eps.reindex(idx.union(eps.index)).ffill().reindex(idx)
     y_d = y.reindex(idx.union(y.index)).ffill().reindex(idx)
-    # SPY ≈ 标普500 / 10
-    spx = spy["close"].reindex(idx) * 10.0
+    # SPY 未复权收盘 ≈ 标普500 / 10（2004 年以来两者之比均值 1.0002、标准差 0.25%）
+    px = spy["rawclose"].reindex(idx)
+    if os.path.exists(SPY_RAW_BACKFILL):
+        bf = pd.read_csv(SPY_RAW_BACKFILL, parse_dates=["date"]).drop_duplicates("date").set_index("date")["close"]
+        early = px.index <= bf.index.max()
+        px[early] = bf.reindex(px.index[early]).values
+    else:
+        print(f"  ! 缺 {os.path.relpath(SPY_RAW_BACKFILL)}，2016-09-16 以前的 ERP 用的是缩放过的价格")
+    spx = px * 10.0
     ep = eps_d / spx * 100.0          # 盈利收益率 %
     return ep - y_d, ep                # (ERP %, E/P %)
 
