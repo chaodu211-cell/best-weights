@@ -414,22 +414,7 @@ def patch(d, E, A, log=False):
             "edge": num(float(r_["edge"]), 2), "hot_mean": num(float(r_["hot_mean"]), 2),
             "hot_neg": num(float(r_["hot_neg"])), "all_mean": num(float(r_["all_mean"]), 2),
             "all_neg": num(float(r_["all_neg"]))}
-    # —— 集中度状态提示（2026-09-28）：只作提示，不改红点；规则与来历见 alt_engine 的 CONC_* 注释 ——
-    conc = {}
-    for key, col, nm, reading in (("top2", "top2", "TOP2", adj["top2"]),
-                                  ("topshare", "_topshare", "前2%", parts["topshare"])):
-        if col not in rawdf.columns:
-            continue
-        up, lvl = A.conc_state(rawdf[col])
-        u, l, r = lastv(up), lastv(lvl), lastv(reading)   # 走势图 2026-10-07 去掉，只留数字卡片
-        lab = A.conc_label(None if u is None else float(u), None if l is None else float(l),
-                           None if r is None else float(r))
-        conc[key] = {"factor": nm, "up": num(u), "lvl": num(l), "reading": num(r),
-                     "raw": num(lastv(rawdf[col]), 1),
-                     "state": lab["name"], "state_key": lab["key"], "msg": lab["msg"]}
-    d["validity"]["conc"] = {"items": conc, "up_hi": A.CONC_UP_HI, "up_lo": A.CONC_UP_LO,
-                             "lvl_hi": A.CONC_LVL_HI, "read_hi": A.CONC_READ_HI,
-                             "hist_from": f"{rawdf.index[0]:%Y-%m}"}
+    # 集中度状态提示（2026-09-28 加）2026-10-12 删掉，原因见 alt_engine 的注释
 
     d["alerts"]["counts"] = {k: int(sum(v)) for k, v in d["alerts"]["flags"].items()}
 
@@ -656,9 +641,6 @@ def main():
             print(f"漏报登记 自 {rc['from']}：" + "；".join(
                 f"{k} 下跌顶 {j['n']} 个、抓到 {j['caught'] if j['caught'] is not None else 0} 个/{j['verdict']}"
                 + (f"（p = {j['p']:.3f}）" if j["p"] is not None else "") for k, j in rc["judge"].items()))
-        for c in (v.get("conc") or {}).get("items", {}).values():
-            print(f"集中度状态 {c['factor']}：{c['state']}（近一年 {c['up']}% 的日子高于年度中位数，"
-                  f"水平第 {c['lvl']} 分位，读数 {c['reading']}）")
     for k, fl in d["alerts"]["flags"].items():
         pos = np.where(np.array(fl))[0]
         if not len(pos):

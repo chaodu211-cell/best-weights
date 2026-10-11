@@ -826,13 +826,13 @@ function drawTDC(){
 /* 红点有效性：数字卡片 + 预先登记表（2026-09-24）。
    原来另有与纳指图同轴的小图，2026-10-01、10-07 按用户要求先后全部去掉，只留数字卡片；
    「近 2 年实际触发频率」卡片 2026-10-11 按用户要求取消（来历见 alt_engine 的 ALT_DESIGN_RATE 注释），
-   同日加漏报登记（以真实下跌顶为条件的预先登记，规则见 alt_engine 的 RECALL_* 注释）。 */
+   同日加漏报登记（以真实下跌顶为条件的预先登记，规则见 alt_engine 的 RECALL_* 注释）；
+   「集中度状态（TOP2）」卡片 2026-10-12 按用户要求删掉（原因见 alt_engine 的注释）。 */
 const VV = D.validity || null;
 (function(){
   if (!VV) return;
   $("validsec").style.display = "";
   const P = VV.prereg, J = P.judge;
-  const CC = VV.conc || null, CI = CC ? CC.items : {};
   const fz = (v, n) => v == null ? "--" : Number(v).toFixed(n || 0);
   const HT = VV.hot || null;
   const hotMsg = !HT ? "数据不足" : HT.edge == null ? `热端只有 ${HT.n} 天（少于 ${HT.min} 天），样本不足`
@@ -846,8 +846,7 @@ const VV = D.validity || null;
   $("valid-sub").innerHTML = `回答三件事：<b>红点还适不适合当下这个时代</b>（热端表现，慢变量），
     <b>红点亮了之后准不准</b>（预先登记，只看起算日之后的新事件），以及<b>该亮的时候亮没亮</b>
     （漏报登记，只看起算日之后的真实下跌顶，没有顶就不评判）。另加一种<b>自适应门槛</b>的空心红点与实心红点并列，
-    防止温度基数整体漂移后固定门槛整段失声。<b>集中度状态</b>提示 TOP2、前2% 这两个滚动分位因子的读数该怎么解读
-    （集中度一路上升时读数容易长期偏高，高位走平时读数不高不代表不拥挤）。`;
+    防止温度基数整体漂移后固定门槛整段失声。`;
   $("vtiles").innerHTML = [
     ["自适应门槛（空心红点）", VV.th_ad_now == null ? "--" : VV.th_ad_now.toFixed(1),
      `固定门槛 ${VV.th_fixed}` + (VV.th_ad_now == null ? "" : ` · 差 ${(VV.th_ad_now - VV.th_fixed).toFixed(1)}`),
@@ -859,11 +858,7 @@ const VV = D.validity || null;
     ["预先登记", `${J["固定门槛"].n} / ${J["自适应门槛"].n}`, `实心 / 空心 · 自 ${P.from} 起`,
      jtxt("固定门槛") + "<br>" + jtxt("自适应门槛"), false]
   ].concat(RC ? [["漏报登记", `${RJ["固定门槛"].n} / ${RC.min}`, `下跌顶 / 满几个才评判 · 自 ${RC.from} 起`,
-     rtxt("固定门槛") + "<br>" + rtxt("自适应门槛"), RJ["固定门槛"].verdict === "未通过"]] : []).concat(CI.top2 ? [["集中度状态（TOP2）", CI.top2.state,
-     `近一年 ${fz(CI.top2.up)}% 的日子高于年度中位数 · 原始值 ${fz(CI.top2.raw, 1)}%` +
-     `（${CC.hist_from} 以来第 ${fz(CI.top2.lvl)} 分位）· 今日读数 ${fz(CI.top2.reading)}`,
-     CI.top2.msg + (CI.topshare ? `<br>前2%：${CI.topshare.state}（${fz(CI.topshare.up)}% · 第 ${fz(CI.topshare.lvl)} 分位 · 读数 ${fz(CI.topshare.reading)}）` : ""),
-     CI.top2.state_key !== "normal"]] : []).map(([t, b, e1, e2, w]) => `<div class="vtile"><i>${t}</i><b>${b}</b><em>${e1}</em><em class="${w ? "warn" : ""}">${e2}</em></div>`).join("");
+     rtxt("固定门槛") + "<br>" + rtxt("自适应门槛"), RJ["固定门槛"].verdict === "未通过"]] : []).map(([t, b, e1, e2, w]) => `<div class="vtile"><i>${t}</i><b>${b}</b><em>${e1}</em><em class="${w ? "warn" : ""}">${e2}</em></div>`).join("");
   $("prereg-sub").innerHTML = `<b>标准（${P.from} 前定好，此后不改）</b>：以事件首日为单位（相隔 ${VV.fwd} 个交易日以内算同一次），
     看之后 ${VV.fwd} 个交易日 QQQ 收益。前瞻收益已可知的事件累计 ≥ ${P.min_events} 次后，把同样个数的日子随机放在起算日之后的交易日里
     抽 ${P.draws.toLocaleString()} 次，随机均值不高于实际均值的比例就是 p；<b>p &lt; ${P.p_cut} 判通过</b>，否则判未通过。
