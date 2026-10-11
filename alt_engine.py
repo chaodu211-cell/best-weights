@@ -103,13 +103,16 @@ ALT_PERSIST = 3
 # **趋势方向**变成读数高低：TOP2、杠杆交易强度的原始值 2010-16 下降、2017 后上升，
 # 温度基数因此差 6.7 分，因子间相关 0.02 对 0.21。固定门槛在另一个时代就够不着。
 # 设计触发频率：标定窗口生产数据上红点占交易日的比例。它是"设计值"，定下后不随数据更新，只在重标门槛时
-# 跟着重定，拿来和实际触发频率比。2026-09-18 标定（2017-10-18~2026-09-18）为 65/2241；
+# 跟着重定；现在只用来定自适应门槛取哪个分位（见下）。2026-09-18 标定（2017-10-18~2026-09-18）为 65/2241；
 # 2026-10-01 换 RSP 重标（~2026-09-30）为 67/2249。
 ALT_DESIGN_RATE = 67 / 2249
-# 近 2 年实际触发频率：慢诊断，回答"红点还适不适合当下这个时代"，不预测近期会不会亮。
-# （试过"过去一年温度第 97 分位 < 81.7 就判亮不了"：之后 63 日内仍有 10% 会亮，
+# 近 2 年实际触发频率（RATE_WIN = 504，对照上面的设计值）2026-10-11 按用户要求取消：它不看这两年有没有
+# 该亮的顶，近 2 年确实没有该标红点的时点时读数就是 0，说明不了红点失效。实测训练窗里它报过 4 段「明显低于
+# 设计」（2017-10~2018-03、2019-07~2020-01、2023-11~2024-07、2026-07 起），没有一段对应漏掉的顶——前三段
+# 之后红点按时抓到 2018-08、2020-02、2024-07 的顶，第四段开始前 6 周刚抓到 2026-06 的顶；训练窗里真正漏掉的
+# 2020-09、2022-08（熊市反弹）、2025-02 三个顶，发生时它都没报。
+# （更早还试过"过去一年温度第 97 分位 < 81.7 就判亮不了"：之后 63 日内仍有 10% 会亮，
 #   2016-12 以来 9 次红点里 5 次恰恰从这个状态里冒出来——单看一年说明不了什么。）
-RATE_WIN = 504
 # 自适应门槛（空心红点）：前一日及以前 3 年（至少 2 年）连 3 日温度的同频分位，无前视。
 # 长面板实测：2010-16 固定门槛只亮 2 天，自适应 64 天 / 相对基准 −1.83pp，下跌顶多抓 3 个
 # （2010-04、2012-04、2015-07）；2017 后 −8.19pp（固定 −10.68pp）。代价是训练窗里弱一些。
@@ -352,14 +355,12 @@ def validity(temp, px):
 
     temp: 最优拟合红点温度（全历史）；px: 标的收盘（与 temp 同索引）。
     返回 dict：t3（连 3 日温度）、hot（固定门槛红点）、th_ad（自适应门槛）、hot_ad（自适应红点）、
-    rate（近 2 年实际触发频率 %）、ic（滚动 IC，月末更新后前向填充）、ic_m（只含月末那几个点）、
-    fwd（之后 FWD 日收益）。
+    ic（滚动 IC，月末更新后前向填充）、ic_m（只含月末那几个点）、fwd（之后 FWD 日收益）。
     """
     t3 = temp.rolling(ALT_PERSIST, min_periods=ALT_PERSIST).min()
     hot = (t3 > ALT_TH).fillna(False)
     th_ad = t3.shift(1).rolling(AD_WIN, min_periods=AD_MINP).quantile(1 - ALT_DESIGN_RATE)
     hot_ad = (t3 > th_ad).fillna(False)
-    rate = hot.astype(float).where(t3.notna()).rolling(RATE_WIN, min_periods=RATE_WIN).mean() * 100
     fwd = px.shift(-FWD) / px - 1
     ic = pd.Series(np.nan, index=temp.index)
     ends = temp.index.to_series().groupby([temp.index.year, temp.index.month]).max()
@@ -371,7 +372,7 @@ def validity(temp, px):
         m = a.notna() & b.notna()
         if m.sum() >= IC_WIN * 0.8:
             ic.loc[t] = a[m].corr(b[m], method="spearman")
-    return dict(t3=t3, hot=hot, th_ad=th_ad, hot_ad=hot_ad, rate=rate, ic=ic.ffill(), ic_m=ic.dropna(), fwd=fwd)
+    return dict(t3=t3, hot=hot, th_ad=th_ad, hot_ad=hot_ad, ic=ic.ffill(), ic_m=ic.dropna(), fwd=fwd)
 
 
 def events(flag, gap=FWD):

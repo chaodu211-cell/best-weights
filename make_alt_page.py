@@ -312,7 +312,7 @@ def patch(d, E, A, log=False):
     except Exception as exc:                      # 缺数据时整块跳过，不要让页面挂掉
         print(f"  ! 趋势下跌预警未计算：{exc}")
 
-    # —— 红点有效性检验（2026-09-24）：自适应门槛（空心红点）、近 2 年触发频率、滚动 IC、预先登记 ——
+    # —— 红点有效性检验（2026-09-24）：自适应门槛（空心红点）、滚动 IC、预先登记（近 2 年触发频率 2026-10-11 取消）——
     # 全部在全历史上算（温度与标的都用 rawdf 的索引），再截到展示窗口；来历见 alt_engine 的常量注释。
     V = A.validity(temp_alt, tgt["close"].reindex(temp_alt.index))
     red_rule = next(r for r in d["alerts"]["rules"] if r["key"] == "hot")
@@ -325,7 +325,6 @@ def patch(d, E, A, log=False):
                  f"「连 {A.ALT_PERSIST} 日最低温度」的第 {100 - A.ALT_DESIGN_RATE * 100:.1f} 分位，"
                  f"使触发频率约为 {A.ALT_DESIGN_RATE:.1%}。与实心红点同时成立时画实心。")})
     d["series"]["th_adaptive"] = ser(V["th_ad"])
-    d["series"]["red_rate_2y"] = [num(v, 2) for v in V["rate"].reindex(dates).values]
     d["series"]["red_ic"] = [num(v, 3) for v in V["ic"].reindex(dates).values]
     icm = V["ic_m"]
     ic_end = None
@@ -334,8 +333,7 @@ def patch(d, E, A, log=False):
         ic_end = f"{temp_alt.index[j]:%Y-%m-%d}"
     lastv = lambda s_: (lambda z: None if z.empty else z.iloc[-1])(s_.reindex(dates).dropna())
     d["validity"] = {
-        "design_rate": round(A.ALT_DESIGN_RATE * 100, 2), "rate_win": A.RATE_WIN,
-        "rate_now": num(lastv(V["rate"]), 2), "th_fixed": A.ALT_TH, "th_ad_now": num(lastv(V["th_ad"])),
+        "th_fixed": A.ALT_TH, "th_ad_now": num(lastv(V["th_ad"])),
         "ad_win": A.AD_WIN, "ad_minp": A.AD_MINP, "ic_win": A.IC_WIN, "fwd": A.FWD,
         "ic_now": num(lastv(V["ic"]), 3), "ic_month": (f"{icm.index[-1]:%Y-%m}" if len(icm) else None),
         "ic_window_end": ic_end,
@@ -577,8 +575,7 @@ def main():
     v = d.get("validity") or {}
     if v:
         pj = v["prereg"]["judge"]
-        print(f"有效性：近 2 年触发 {v['rate_now']}%（设计 {v['design_rate']}%）  "
-              f"自适应门槛 {v['th_ad_now']}（固定 {v['th_fixed']:g}）  "
+        print(f"有效性：自适应门槛 {v['th_ad_now']}（固定 {v['th_fixed']:g}）  "
               + (lambda h: f"热端表现 {h['edge']}pp（温度≥{h['lvl']:g} 共 {h['n']} 天，样本止于 {h['end']}）  "
                  if h else "热端表现 无读数  ")(v.get("hot"))
               + f"预先登记 自 {v['prereg']['from']}："
