@@ -107,6 +107,70 @@ def prereg(V, temp, A, log):
             "draws": A.PREREG_DRAWS, "rows": out_rows, "judge": judge}
 
 
+# —— 漏报的预先登记（2026-10-11 加）：以真实下跌顶为条件，看顶前红点亮没亮。规则与来历见 alt_engine 的 RECALL_* 注释 ——
+RECALL_CSV = os.path.join(BASE, "_漏报预登记.csv")
+RECALL_COLS = ["下跌顶", "确认日", "实心红点", "空心红点", "窗口内连3日温度最高", "当日固定门槛", "当日自适应门槛", "登记时间"]
+RECALL_SIGS = (("固定门槛", "实心红点"), ("自适应门槛", "空心红点"))
+
+
+def recall_reg(snap, close, A, write):
+    """漏报的预先登记：起算日之后确认的下跌顶，等快照覆盖到顶后 RECALL_POST 日，追加写进 _漏报预登记.csv，
+    记下快照里顶前窗口内实心 / 空心红点亮没亮；再按事先定好的标准评判。
+
+    红点只认快照（当时页面上显示的），不用重算值；只追加、不改写。write=True 只在 GitHub 每日流水线
+    （ALT_SNAPSHOT=1）——和快照同一个写入方，本地运行只读。
+    """
+    old = (pd.read_csv(RECALL_CSV, parse_dates=["下跌顶", "确认日"])
+           if os.path.exists(RECALL_CSV) else pd.DataFrame(columns=RECALL_COLS))
+    cal = close.dropna().index
+    have = pd.to_datetime(old["下跌顶"])
+    t3 = pd.to_numeric(snap["红点温度"], errors="coerce").rolling(A.ALT_PERSIST, min_periods=A.ALT_PERSIST).min()
+    fnum = lambda v: None if pd.isna(pd.to_numeric(v, errors="coerce")) else round(float(v), 1)
+    now = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+    new = []
+    for p, q in A.drawdown_tops(close):
+        if p < pd.Timestamp(A.RECALL_FROM):
+            continue
+        # 数据修订可能让顶挪一两天：45 个自然日内已登记的算同一轮
+        if len(have) and ((have - p).abs() <= pd.Timedelta(days=45)).any():
+            continue
+        i = cal.get_loc(p)
+        if i + A.RECALL_POST >= len(cal) or snap.index[-1] < cal[i + A.RECALL_POST]:
+            continue                              # 快照还没覆盖到顶后 RECALL_POST 日，下次再登记
+        win = A.recall_window(cal, p)
+        lit = {c: int((pd.to_numeric(snap[c], errors="coerce").reindex(win).fillna(0) > 0).any())
+               for _, c in RECALL_SIGS}
+        tw = t3.reindex(win).dropna()
+        k = tw.idxmax() if len(tw) else None
+        new.append({"下跌顶": p, "确认日": q, "实心红点": lit["实心红点"], "空心红点": lit["空心红点"],
+                    "窗口内连3日温度最高": None if k is None else round(float(tw[k]), 1),
+                    "当日固定门槛": None if k is None else fnum(snap.at[k, "红点门槛"]),
+                    "当日自适应门槛": None if k is None else fnum(snap.at[k, "自适应门槛"]), "登记时间": now})
+    if write:
+        if not os.path.exists(RECALL_CSV):
+            pd.DataFrame(columns=RECALL_COLS).to_csv(RECALL_CSV, index=False, encoding="utf-8")
+        if new:
+            nd = pd.DataFrame(new, columns=RECALL_COLS)
+            for c in ("下跌顶", "确认日"):
+                nd[c] = pd.to_datetime(nd[c]).dt.strftime("%Y-%m-%d")
+            nd.to_csv(RECALL_CSV, mode="a", header=False, index=False, encoding="utf-8")
+            print(f"  漏报登记：新增 {len(new)} 个下跌顶 → {os.path.basename(RECALL_CSV)}")
+        nd_all = pd.DataFrame(new, columns=RECALL_COLS)
+        rows = nd_all if old.empty else (old if nd_all.empty else pd.concat([old, nd_all], ignore_index=True))
+    else:
+        rows = old
+    tops = [pd.Timestamp(x) for x in rows["下跌顶"]]
+    judge = {k: A.recall_judge(tops, snap[c], cal) for k, c in RECALL_SIGS}
+    num = lambda v: None if pd.isna(v) else float(v)
+    out_rows = [{"top": f"{pd.Timestamp(r['下跌顶']):%Y-%m-%d}", "confirm": f"{pd.Timestamp(r['确认日']):%Y-%m-%d}",
+                 "hot": bool(int(r["实心红点"])), "hot_ad": bool(int(r["空心红点"])),
+                 "peak": num(r["窗口内连3日温度最高"]), "th": num(r["当日固定门槛"]),
+                 "th_ad": num(r["当日自适应门槛"]), "logged": str(r["登记时间"])} for _, r in rows.iterrows()]
+    return {"from": A.RECALL_FROM, "min": A.RECALL_MIN, "p_cut": A.RECALL_P, "dd": A.RECALL_DD,
+            "look": A.RECALL_LOOK, "hi": A.RECALL_HI, "pre": A.RECALL_PRE, "post": A.RECALL_POST,
+            "rows": out_rows, "judge": judge}
+
+
 # —— 每日信号快照（2026-09-30 加）——
 # 页面上的历史读数每次都按"今天的成分股名单 + 今天的十年数据"从头重算：名单季度调整、数据起点后移都会改写
 # 历史红/蓝/黄点（实测：只换 3 只成分股，2018-08-27、28 的红点消失；起点后移一年，2022-01-20 的黄点推迟到 01-24）。
@@ -555,6 +619,13 @@ def main():
               f"今天重算与快照不一致 {sm['n_diff']} 处"
               + "".join(f"\n    {x['date']} {x['sig']}：快照{'亮' if x['snap'] else '不亮'}、重算{'亮' if x['now'] else '不亮'}"
                         for x in sm["diffs"]))
+    # —— 漏报的预先登记（2026-10-11 加）：红点只认快照，所以放在快照追加之后；算不出来就不显示，不影响其余部分 ——
+    if snap is not None and d.get("validity"):
+        try:
+            d["validity"]["recall"] = recall_reg(snap, E.load(TARGET)["close"], A,
+                                                 write=os.environ.get("ALT_SNAPSHOT") == "1")
+        except Exception as exc:
+            print(f"  ! 漏报登记未计算：{exc}")
     json.dump(d, open(out_json, "w", encoding="utf-8"), ensure_ascii=False)
 
     tpl = open(os.path.join(BASE, "alt_tpl.html"), encoding="utf-8").read()
@@ -580,6 +651,11 @@ def main():
                  if h else "热端表现 无读数  ")(v.get("hot"))
               + f"预先登记 自 {v['prereg']['from']}："
               + "；".join(f"{k} {j['n']} 次/{j['verdict']}" for k, j in pj.items()))
+        rc = v.get("recall")
+        if rc:
+            print(f"漏报登记 自 {rc['from']}：" + "；".join(
+                f"{k} 下跌顶 {j['n']} 个、抓到 {j['caught'] if j['caught'] is not None else 0} 个/{j['verdict']}"
+                + (f"（p = {j['p']:.3f}）" if j["p"] is not None else "") for k, j in rc["judge"].items()))
         for c in (v.get("conc") or {}).get("items", {}).values():
             print(f"集中度状态 {c['factor']}：{c['state']}（近一年 {c['up']}% 的日子高于年度中位数，"
                   f"水平第 {c['lvl']} 分位，读数 {c['reading']}）")

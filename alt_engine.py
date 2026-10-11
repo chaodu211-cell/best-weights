@@ -133,6 +133,18 @@ HOT_LVL, HOT_WIN, HOT_MIN = 70.0, 252, 10
 # 按事先定好的标准评判——这是唯一不受标定过拟合影响的检验。标准写在 说明.md。
 PREREG_FROM = "2026-09-25"
 PREREG_MIN_EVENTS, PREREG_P, PREREG_DRAWS, PREREG_SEED = 5, 0.10, 10000, 20260924
+# 漏报的预先登记（2026-10-11 定，起算日 2026-10-12，此后不改）：上面那份只看红点亮了之后准不准，
+# 红点一直不亮时它永远「累积中」。这份反过来，以真实下跌顶为条件，看顶前红点亮没亮；没有顶就不评判。
+# 下跌顶（只算非熊市反弹）：纳指某日收盘比它低 RECALL_DD 以上时确认，顶 = 确认日之前 RECALL_LOOK 个交易日里
+# 收盘最高的那天，且须是过去 RECALL_HI 个交易日（含当天）的最高收盘；已登记的顶之后 RECALL_LOOK 个交易日内
+# 再出现的顶算同一轮。这样写只用确认那天已有的数据，2007-07 以来逐个复现了 scan_window.tops 去掉熊市反弹后的
+# 14 个顶，确认日也相同。顶前 RECALL_PRE 日至顶后 RECALL_POST 日内亮过红点算抓到，红点以 _信号快照.csv 为准。
+# 评判：登记的顶 ≥ RECALL_MIN 个后，把快照里的红点序列整体循环平移（每种平移各算一次，不抽样），
+# p = 平移后抓到的顶不少于实际的比例；p < RECALL_P 判通过。实心、空心分开判。标准写在 说明.md。
+RECALL_FROM = "2026-10-12"
+RECALL_DD, RECALL_LOOK, RECALL_HI = 0.11, 63, 252
+RECALL_PRE, RECALL_POST = 30, 5
+RECALL_MIN, RECALL_P = 5, 0.10
 
 # —— 集中度状态提示（2026-09-28 加，只作提示，不改红点）——
 # 担心的风险：TOP2、前2% 都是 252 日滚动分位，只和过去一年比——集中度一路上升时读数天天顶格，
@@ -406,6 +418,54 @@ def prereg_judge(firsts, fwd):
         sims = np.array([rng.choice(v, len(got), replace=False).mean() for _ in range(PREREG_DRAWS)])
         p = float((sims <= np.mean(got)).mean())
         res.update(p=p, verdict="通过" if p < PREREG_P else "未通过")
+    return res
+
+
+def drawdown_tops(close):
+    """下跌顶（只算非熊市反弹），按确认那天已有的数据逐日确认。返回 [(顶, 确认日), ...]，规则见 RECALL_* 注释。"""
+    c = close.dropna()
+    v = c.values
+    hi = c.rolling(RECALL_HI, min_periods=RECALL_HI).max().values
+    out, last = [], None
+    for q in range(1, len(v)):
+        a = max(0, q - RECALL_LOOK)
+        p = a + int(np.argmax(v[a:q]))
+        if last is not None and p - last <= RECALL_LOOK:
+            continue
+        if np.isfinite(hi[p]) and v[p] >= hi[p] and v[q] <= v[p] * (1 - RECALL_DD):
+            out.append((c.index[p], c.index[q]))
+            last = p
+    return out
+
+
+def recall_window(cal, top):
+    """顶前 RECALL_PRE 日至顶后 RECALL_POST 日（交易日历 cal 上数），返回这些日期。"""
+    i = cal.get_loc(top)
+    return cal[max(0, i - RECALL_PRE): i + RECALL_POST + 1]
+
+
+def recall_judge(tops, flag, cal):
+    """按漏报的预先登记标准评判一类红点。
+
+    tops: 登记在案的顶；flag: 快照里这类红点的逐日 0/1；cal: 交易日历。
+    平移的范围是快照覆盖的交易日，快照之前的日子按不亮计。返回抓到几个、平移后平均抓到几个、p 与结论。
+    """
+    res = {"n": len(tops), "need": RECALL_MIN, "caught": None, "sim_mean": None, "p": None, "verdict": "累积中"}
+    f = pd.to_numeric(flag, errors="coerce").dropna()
+    if not len(tops) or not len(f):
+        return res
+    span = cal[(cal >= f.index[0]) & (cal <= f.index[-1])]
+    fv = f.reindex(span).fillna(0).astype(bool).values
+    wins = []
+    for t in tops:
+        i = span.searchsorted(t)
+        wins.append((max(0, i - RECALL_PRE), i + RECALL_POST + 1))
+    caught = lambda x: sum(bool(x[a:b].any()) for a, b in wins)
+    res["caught"] = caught(fv)
+    if len(tops) >= RECALL_MIN and len(span) > 1:
+        sims = np.array([caught(np.roll(fv, k)) for k in range(1, len(span))])
+        p = float((sims >= res["caught"]).mean())
+        res.update(sim_mean=float(sims.mean()), p=p, verdict="通过" if p < RECALL_P else "未通过")
     return res
 
 

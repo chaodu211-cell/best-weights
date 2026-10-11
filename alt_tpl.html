@@ -299,6 +299,8 @@ body:has(#fdlg[open]){overflow:hidden}
     <h3 class="vh3">预先登记</h3>
     <p class="sub" id="prereg-sub"></p>
     <div class="vtabwrap" id="prereg"></div>
+    <p class="sub" id="recall-sub" style="margin-top:14px"></p>
+    <div class="vtabwrap" id="recall"></div>
   </section>
 
   <section>
@@ -823,7 +825,8 @@ function drawTDC(){
 
 /* 红点有效性：数字卡片 + 预先登记表（2026-09-24）。
    原来另有与纳指图同轴的小图，2026-10-01、10-07 按用户要求先后全部去掉，只留数字卡片；
-   「近 2 年实际触发频率」卡片 2026-10-11 按用户要求取消（来历见 alt_engine 的 ALT_DESIGN_RATE 注释）。 */
+   「近 2 年实际触发频率」卡片 2026-10-11 按用户要求取消（来历见 alt_engine 的 ALT_DESIGN_RATE 注释），
+   同日加漏报登记（以真实下跌顶为条件的预先登记，规则见 alt_engine 的 RECALL_* 注释）。 */
 const VV = D.validity || null;
 (function(){
   if (!VV) return;
@@ -837,8 +840,12 @@ const VV = D.validity || null;
                : HT.edge < 1 ? "热端和平时差不多：热端的信息偏弱" : "热了之后反而更强：需要警惕";
   const jtxt = k => { const j = J[k]; return `${k} ${j.n_known}/${j.need} · ${j.verdict}` +
     (j.p != null ? `（p = ${j.p.toFixed(3)}）` : ""); };
-  $("valid-sub").innerHTML = `回答两件不同的事：<b>红点还适不适合当下这个时代</b>（热端表现，慢变量），
-    以及<b>红点亮了之后准不准</b>（预先登记，只看起算日之后的新事件）。另加一种<b>自适应门槛</b>的空心红点与实心红点并列，
+  const RC = VV.recall || null, RJ = RC ? RC.judge : null;
+  const rtxt = k => { const j = RJ[k]; return `${k} 抓到 ${j.caught == null ? 0 : j.caught} · ${j.verdict}` +
+    (j.p != null ? `（随机平移平均 ${j.sim_mean.toFixed(1)} 个，p = ${j.p.toFixed(3)}）` : ""); };
+  $("valid-sub").innerHTML = `回答三件事：<b>红点还适不适合当下这个时代</b>（热端表现，慢变量），
+    <b>红点亮了之后准不准</b>（预先登记，只看起算日之后的新事件），以及<b>该亮的时候亮没亮</b>
+    （漏报登记，只看起算日之后的真实下跌顶，没有顶就不评判）。另加一种<b>自适应门槛</b>的空心红点与实心红点并列，
     防止温度基数整体漂移后固定门槛整段失声。<b>集中度状态</b>提示 TOP2、前2% 这两个滚动分位因子的读数该怎么解读
     （集中度一路上升时读数容易长期偏高，高位走平时读数不高不代表不拥挤）。`;
   $("vtiles").innerHTML = [
@@ -851,7 +858,8 @@ const VV = D.validity || null;
      hotMsg, !HT || HT.edge == null || HT.edge > -1],
     ["预先登记", `${J["固定门槛"].n} / ${J["自适应门槛"].n}`, `实心 / 空心 · 自 ${P.from} 起`,
      jtxt("固定门槛") + "<br>" + jtxt("自适应门槛"), false]
-  ].concat(CI.top2 ? [["集中度状态（TOP2）", CI.top2.state,
+  ].concat(RC ? [["漏报登记", `${RJ["固定门槛"].n} / ${RC.min}`, `下跌顶 / 满几个才评判 · 自 ${RC.from} 起`,
+     rtxt("固定门槛") + "<br>" + rtxt("自适应门槛"), RJ["固定门槛"].verdict === "未通过"]] : []).concat(CI.top2 ? [["集中度状态（TOP2）", CI.top2.state,
      `近一年 ${fz(CI.top2.up)}% 的日子高于年度中位数 · 原始值 ${fz(CI.top2.raw, 1)}%` +
      `（${CC.hist_from} 以来第 ${fz(CI.top2.lvl)} 分位）· 今日读数 ${fz(CI.top2.reading)}`,
      CI.top2.msg + (CI.topshare ? `<br>前2%：${CI.topshare.state}（${fz(CI.topshare.up)}% · 第 ${fz(CI.topshare.lvl)} 分位 · 读数 ${fz(CI.topshare.reading)}）` : ""),
@@ -866,6 +874,19 @@ const VV = D.validity || null;
     R2.map(r => `<tr><td>${r.sig}</td><td>${r.date}</td><td>${r.temp.toFixed(1)}</td><td>${r.th.toFixed(1)}</td>
       <td>${r.fwd == null ? "未满 " + VV.fwd + " 日" : (r.fwd > 0 ? "+" : "") + r.fwd.toFixed(2) + "%"}</td><td>${r.logged}</td></tr>`).join("") +
     `</table>` : `<p class="sub" style="margin:6px 0 0">起算日 ${P.from} 之后还没有新的红点事件。</p>`;
+  if (RC) {
+    $("recall-sub").innerHTML = `<b>漏报登记</b>（标准 ${RC.from} 前定好，此后不改）：<b>下跌顶</b> = 纳指收盘是过去 ${RC.hi} 个交易日最高，
+      之后 ${RC.look} 个交易日内收盘比它低 ${(RC.dd * 100).toFixed(0)}% 以上（熊市里的反弹高点不算）；同一轮下跌只算一个顶。
+      顶前 ${RC.pre} 日至顶后 ${RC.post} 日内亮过红点算抓到，红点以每日信号快照为准。登记的顶满 ${RC.min} 个后，
+      把快照里的红点序列整体循环平移，逐一试过每种平移，平移后抓到的顶不少于实际的比例就是 p；<b>p &lt; ${RC.p_cut} 判通过</b>，否则判未通过。
+      实心、空心两类分开评判。登记表 <code>_漏报预登记.csv</code> 只追加、不改写。`;
+    const R3 = RC.rows, yn = b => b ? "抓到" : "没抓到", f1 = v => v == null ? "--" : v.toFixed(1);
+    $("recall").innerHTML = R3.length ? `<table class="vtab"><tr><th>下跌顶</th><th>确认日</th><th>实心</th><th>空心</th>
+        <th>窗口内连 3 日温度最高</th><th>当日固定门槛</th><th>当日自适应门槛</th><th>登记时间</th></tr>` +
+      R3.map(r => `<tr><td>${r.top}</td><td>${r.confirm}</td><td>${yn(r.hot)}</td><td>${yn(r.hot_ad)}</td>
+        <td>${f1(r.peak)}</td><td>${f1(r.th)}</td><td>${f1(r.th_ad)}</td><td>${r.logged}</td></tr>`).join("") +
+      `</table>` : `<p class="sub" style="margin:6px 0 0">起算日 ${RC.from} 之后还没有确认的下跌顶。</p>`;
+  }
 })();
 
 /* 实际利率条：与纳指图同一时间轴，橙色底纹标出实际利率重估期 */
