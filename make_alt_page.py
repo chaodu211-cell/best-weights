@@ -526,14 +526,16 @@ def patch(d, E, A, log=False):
     # 日常波动放大成二三十分的来回跳）。一条线 = {name, unit, dp, v}，杠杆温度没有单一原始值，画多空比与交易强度两条。
     # 杠杆两条用现行口径（含单股杠杆 ETF）回算整段，免得在 2026-09-30 换口径处凭空跳一截；
     # 那之前红点实际用的是旧口径（只含 15 只指数杠杆 ETF）的分位。
+    # 杠杆两条另带各自的分位 p（2026-10-12 加，就是红点实际用、按 LEV_INNER 合成的那两列），悬浮读数里分别标出。
     nums = lambda s, n: [num(v, n) for v in s.reindex(dates).values]
-    line = lambda nm, unit, dp, s: None if s is None else {"name": nm, "unit": unit, "dp": dp, "v": nums(s, dp)}
+    line = lambda nm, unit, dp, s, p=None: None if s is None else dict(
+        {"name": nm, "unit": unit, "dp": dp, "v": nums(s, dp)}, **({} if p is None else {"p": nums(p, 1)}))
     lev_src = lev_raw if lev_raw is not None else {"ratio": rawdf.get("leverage"), "intensity": rawdf.get("_lev_intensity")}
     raw_lines = {
         "narrow":   [line("SPY 相对 RSP 63 日超额", "%", 2, ew_gap)],
         "top2":     [line("TOP2行业成交额占比", "%", 1, rawdf["top2"])],
-        "lev":      [line("多空比（5 日均）", "%", 1, lev_src["ratio"]),
-                     line("交易强度（5 日均）", "%", 1, lev_src["intensity"])],
+        "lev":      [line("多空比（5 日均）", "%", 1, lev_src["ratio"], lev_pct["ratio"]),
+                     line("交易强度（5 日均）", "%", 1, lev_src["intensity"], lev_pct["intensity"])],
         "vix_abs":  [line("VIX 收盘", "", 1, vix_s)],
         "topshare": [line("前2%成交额个股占比", "%", 1, rawdf["_topshare"])],
         "ma20":     [line("站上MA20占比", "%", 1, rawdf["ma20"])],

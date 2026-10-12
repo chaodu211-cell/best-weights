@@ -1278,7 +1278,8 @@ function drawFac(){
   svg.innerHTML = "";
   if (!fs) return;
   const A = FA, Bx = FB + 1, D2 = PDATES.slice(A, Bx), N2 = D2.length;
-  const ls = fs.lines.map(l => Object.assign({}, l, {w: l.v.slice(A, Bx), neg: l.v.some(v => v != null && v < 0)}));
+  const ls = fs.lines.map(l => Object.assign({}, l, {w: l.v.slice(A, Bx), pw: l.p ? l.p.slice(A, Bx) : null,
+    neg: l.v.some(v => v != null && v < 0)}));
   const nv = NDX ? NDX.slice(A, Bx) : [];
   const h = 340, m = {t:26, r:58, b:26, l:50};
   svg.setAttribute("viewBox", `0 0 ${W} ${h}`);
@@ -1370,10 +1371,12 @@ function drawFac(){
       hfs[k].setAttribute("opacity", a == null ? 0 : 1); });
     if (b != null){ hn.setAttribute("cx", x(i)); hn.setAttribute("cy", yn(b)); }
     hn.setAttribute("opacity", b == null ? 0 : 1);
+    // 杠杆温度两条线各带自己的分位（pw）：分别标在读数后面，底下那行改叫合成分位
     const pc = !fs.pct && it.series && it.series[gi];
     tip.innerHTML = `<span style="color:#8DA2B8">${D2[i]}</span>` +
-      ls.map((l, k) => `<br>${sw(FC.fac, k > 0)}${l.name} ${fFmt(l, l.w[i])}`).join("") +
-      (pc != null && pc !== false ? `<br><span style="color:#56687D;padding-left:16px">分位 ${pc.toFixed(1)}</span>` : "") +
+      ls.map((l, k) => `<br>${sw(FC.fac, k > 0)}${l.name} ${fFmt(l, l.w[i])}` +
+        (l.pw && l.pw[i] != null ? `<span style="color:#8DA2B8"> · 分位 ${l.pw[i].toFixed(1)}</span>` : "")).join("") +
+      (pc != null && pc !== false ? `<br><span style="color:#56687D;padding-left:16px">${ls.some(l => l.pw) ? "合成分位" : "分位"} ${pc.toFixed(1)}</span>` : "") +
       (b != null ? `<br>${sw(FC.ndx)}${NDXS} ${b.toFixed(2)}` : "");
     tip.style.opacity = 1;
     const a0 = ls.map(l => l.w[i]).find(z => z != null);
@@ -1436,7 +1439,8 @@ function renderFac(){
   $("fdlg-cap").innerHTML = `${it.desc}。${it.sub}。` +
     (fs.pct ? "分位越高＝该维度越热，虚线为 50 分位。"
             : "左轴是<b>实际读数</b>，按所选时间段自动缩放；红点、蓝点用的是它在过去 252 日里的分位（分项表与悬浮读数里）。") +
-    (FKEY === "lev" ? "两条都按现行口径（含单股杠杆 ETF）回算整段；2026-09-30 以前红点实际用的是旧口径（只含 15 只指数杠杆 ETF）的分位。" : "") +
+    (FKEY === "lev" ? "两条都按现行口径（含单股杠杆 ETF）回算整段；2026-09-30 以前红点实际用的是旧口径（只含 15 只指数杠杆 ETF）的分位。" +
+      "悬浮读数里两条各自的分位与合成分位，都是红点实际用的那一版。" : "") +
     (PDAY !== PLAST ? `竖线是「查看某一天」选中的 ${PDATES[PDAY]}。` : "");
   fSync(); drawFac();
 }
