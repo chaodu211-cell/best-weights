@@ -9,7 +9,8 @@
   · 价格：raw/ 里的 QQQ、SOXX（选品、波动率、熊市闸门）与 TQQQ、SOXL、SQQQ（是否可交易）
 t 日收盘后给出的持仓在 t+1 开盘执行，和回测口径一致。
 
-策略参数在 STRATEGY 里写死（来自 _picked_skip.json 的十年窗选定，2026-09-28），不读结果文件，
+策略参数在 STRATEGY 里写死（来自 _picked_skip.json 的十年窗选定，2026-09-28；
+rec_unlock=−0.03 为 2026-10-12 加：黄点锁仓期纳指收复到距 52 周高点 3% 以内也解锁），不读结果文件，
 免得重跑网格时页面上的规则悄悄变了。
 """
 import os, sys
@@ -21,7 +22,7 @@ import strategy as ST
 from momentum_switch import signals as msig, choose
 
 NAME = "纳指 / 半导体动量二选一（新·十年版）"
-STRATEGY = dict(lev_max=2.5, vol_tgt=0.3, red_hold=30, red_mult=0.0, use_ad=False, rearm=60.0,
+STRATEGY = dict(lev_max=2.5, vol_tgt=0.3, red_hold=30, red_mult=0.0, use_ad=False, rearm=60.0, rec_unlock=-0.03,
                 blue_hold=40, blue_k=10, blue_lev=2.0, blue_release="perm", soft_mult=0.0, blue_asset="SOXX",
                 tdc_gate=None, bear_mult=0.5, short_yellow=0.0, short_red=1 / 3)
 RULE = ("skip:126", "M", 0.0, 0)          # 每月第一个交易日比 t−126 → t−21 的涨幅，永远持有其一

@@ -5,7 +5,8 @@
 
 ① 模型状态机（t 日收盘后判定，t+1 开盘执行）
    红点      最近一次红点（实心；use_ad 时空心也算）之后 red_hold 个交易日内，常态敞口乘 red_mult
-   黄点      亮起即锁仓，直到 TDC 回落到 rearm 以下（模型自己的"重新武装"线）
+   黄点      亮起即锁仓，直到 TDC 回落到 rearm 以下（模型自己的"重新武装"线）；
+             rec_unlock 不为 None 时，纳指（QQQ）收复到距 52 周高点 rec_unlock 以内也解锁（2026-10-12 加，−0.03）
    实心蓝点  之后 blue_hold 个交易日进入"抄底"：买 blue_asset 的杠杆版，敞口 = blue_lev × 分批系数，
              分批系数 = min(1, 近 blue_hold 日蓝点天数 / blue_k)（blue_k=1 即一次满仓）
              blue_release="perm"：蓝点永久解除黄点锁仓；"temp"：抄底期结束后若 TDC 仍 ≥ rearm 则回到锁仓
@@ -38,7 +39,7 @@ DEFAULT = dict(
     universe="fixed:QQQ", top=1, mom=126, abs_mom=True,
     lev_max=3.0, vol_tgt=None, vol_win=20,
     red_hold=30, red_mult=0.0, use_ad=False,
-    rearm=60.0,
+    rearm=60.0, rec_unlock=None,
     blue_hold=40, blue_k=1, blue_lev=3.0, blue_asset="QQQ", soft_mult=0.0, blue_release="perm",
     tdc_gate=None, tdc_mult=0.0, bear_mult=1.0,
     short_yellow=0.0, short_red=0.0,
@@ -66,6 +67,7 @@ class Prep:
         self.mom = {m: (ux / ux.shift(m) - 1).values for m in (63, 126, 252)}
         q = M.C["QQQ"]; ma = q.rolling(200, min_periods=200).mean()
         self.bear = ((q < ma) & (ma - ma.shift(21) < 0)).values
+        self.dd52 = (q / q.rolling(252, min_periods=60).max() - 1).values
         # 每只底层逐日可交易的最高倍数多头：best_col[u_i, t]（-1 = 没有），best_L[u_i, t]
         T = len(idx)
         trad = M.tradable[M.cols].values
@@ -113,6 +115,7 @@ def build(P, p, t_from=None):
         x = P.tdc[t]
         if P.yellow[t]: locked = True
         elif locked and x == x and x < p["rearm"]: locked = False
+        elif locked and p["rec_unlock"] is not None and P.dd52[t] >= p["rec_unlock"]: locked = False
         # —— 抄底 ——
         if t - last_blue < bh or (p["soft_mult"] > 0 and t - last_soft < bh):
             lo = t - bh
