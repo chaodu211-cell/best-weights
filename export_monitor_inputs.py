@@ -62,6 +62,8 @@ def read_asset(path, as_of):
                         raise ValueError("expected exactly date,adjclose,close,volume")
                     day = valid_date(row[0].strip())
                     adjusted, close, volume = positive(row[1]), positive(row[2]), nonnegative(row[3])
+                    if not math.isfinite(close * volume):
+                        raise ValueError("dollar volume must be finite")
                     observed_dates.append(day)
                     if day > as_of:
                         continue
