@@ -118,6 +118,12 @@ class ExportTests(unittest.TestCase):
         self.assertGreaterEqual(sum(issue["code"] == "invalid_row" for issue in issues), 2)
         self.assertTrue(any(issue["code"] == "conflicting_duplicate" for issue in issues))
 
+    def test_finite_inputs_cannot_overflow_dollar_volume(self):
+        self.write("SOXL", [(day, 100, 1e308, 1e308) for day in self.days])
+        payload = self.build()
+        self.assertFalse(payload["health"]["ok"])
+        self.assertNotIn("SOXL", payload["rows"][-1]["prices"])
+
     def test_insufficient_history_and_bad_source_sha_are_explicit(self):
         payload = self.build(self.days[25])
         self.assertFalse(payload["health"]["ok"])
