@@ -176,6 +176,13 @@ jobs:
           PY
           echo "built=true" >> "$GITHUB_OUTPUT"
 
+      # Publish the already fetched, adjusted ETF inputs consumed by the private dual-model monitor.
+      # An unavailable monitor export must never prevent the original model page from publishing.
+      - name: Export dual-model monitor price inputs
+        continue-on-error: true
+        run: |
+          python3 export_monitor_inputs.py --raw raw --data data_alt.json --output _site/monitor-inputs.json --source-commit "$GITHUB_SHA" || echo "::warning::Monitor inputs unavailable; original model publication continues"
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
@@ -253,3 +260,4 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
