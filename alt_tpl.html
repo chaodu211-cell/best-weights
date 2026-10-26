@@ -54,15 +54,6 @@ h1 span{color:var(--ink3);font-weight:300}
           color:var(--ink);font-style:normal;white-space:nowrap;top:0}
 .marker b{position:absolute;transform:translateX(-50%);width:2px;height:7px;background:var(--ink);bottom:-1px}
 
-/* ---------- 策略持仓 ---------- */
-.strat-row{display:flex;flex-wrap:wrap;gap:12px 40px;align-items:baseline}
-.strat-item{display:flex;align-items:baseline;gap:12px}
-.strat-item span{font-family:var(--mono);font-size:13px;letter-spacing:.06em;color:var(--ink2)}
-.strat-item b{font-family:var(--mono);font-size:clamp(30px,6vw,44px);font-weight:300;letter-spacing:-.02em;
-              line-height:1;font-variant-numeric:tabular-nums}
-.strat-bar{display:flex;height:8px;border-radius:2px;overflow:hidden;margin-top:16px;background:var(--surface2)}
-.strat-bar i{display:block;height:100%}
-
 /* ---------- sections ---------- */
 section{padding-top:clamp(30px,5vw,46px)}
 h2{margin:0 0 4px;font-size:15px;font-weight:500;letter-spacing:.03em}
@@ -252,14 +243,6 @@ body:has(#fdlg[open]){overflow:hidden}
       <div class="band-names"><span>极度恐慌</span><span>偏冷</span><span>中性</span><span>偏热</span><span>极度贪婪</span></div>
     </div>
   </div>
-
-  <section id="stratsec" style="display:none">
-    <h2>策略持仓</h2>
-    <p class="sub" id="strat-sub"></p>
-    <div class="strat-row" id="strat-row"></div>
-    <div class="strat-bar" id="strat-bar"></div>
-    <p class="sub" id="strat-snap" style="margin:12px 0 0"></p>
-  </section>
 
   <section>
     <h2 id="ndx-h2">与预警点位</h2>
@@ -1251,34 +1234,6 @@ function ndxSub(){
          `${sample} · 区间 ${D.series.dates[A]} 至 ${D.series.dates[REND]}。`;
 }
 setRange(RSTART, REND, false);
-
-/* ---- 策略持仓：只显示下一交易日开盘该持有什么、各多少（规则见 策略回测/live.py） ---- */
-(function(){ try {
-  const st = D.strategy;
-  if (!st || !st.holdings) return;
-  const COL = {SOXL: "var(--r4)", TQQQ: "var(--r2)", SQQQ: "var(--r5)", QQQ: "var(--r2)", SOXX: "var(--r4)"};
-  const items = st.holdings.map(h => ({name: h.sym, w: h.weight, c: COL[h.sym] || "var(--ink2)"}));
-  if (st.cash > 0.0005) items.push({name: "现金", w: st.cash, c: "var(--border-2)"});
-  const pct = w => `${(w * 100).toFixed(0)}%`;
-  $("strat-sub").textContent = `按 ${st.as_of} 收盘，下一交易日开盘执行`;
-  $("strat-row").innerHTML = items.map(x =>
-    `<div class="strat-item"><span style="color:${x.c === "var(--border-2)" ? "var(--ink2)" : x.c}">${x.name}</span>` +
-    `<b>${pct(x.w)}</b></div>`).join("");
-  $("strat-bar").innerHTML = items.map(x =>
-    `<i style="width:${(x.w * 100).toFixed(2)}%;background:${x.c}" title="${x.name} ${pct(x.w)}"></i>`).join("");
-  // 信号快照（2026-09-30）：历史红/黄/蓝点每次按今天的成分股名单重算、会被改写；持仓在快照覆盖的日子里用快照
-  const sn = D.snapshot;
-  const onoff = b => b ? "亮" : "不亮";
-  $("strat-snap").textContent = !sn
-    ? "信号快照尚未开始记录：持仓用的历史信号全部按当次重算（成分股调整、数据起点后移都可能改写历史点）。"
-    : `持仓用的信号以每日快照为准：自 ${sn.from} 起已记 ${sn.n} 天` + (sn.n_fill ? `（其中补记 ${sn.n_fill} 天）` : "") +
-      `，更早的日子按当次重算。` +
-      (sn.n_diff
-        ? `今天重算与快照不一致 ${sn.n_diff} 处：` +
-          sn.diffs.slice(-6).map(x => `${x.date} ${x.sig}（快照${onoff(x.snap)}，重算${onoff(x.now)}）`).join("；") + "。"
-        : "今天重算与快照完全一致。");
-  $("stratsec").style.display = "";
-} catch (e) { console.error("策略持仓渲染失败", e); } })();   // 出错也不能拖累后面的图表
 
 /* ---- 分项走势：点分项 → 该分项与纳指同一张图（2026-10-07） ----
    分项画实际读数（左轴，按所选时间段自动缩放），纳指画收盘价（右轴）。两条线量纲不同，只能各用一根纵轴；

@@ -227,7 +227,6 @@ def recall_reg(snap, close, A, write):
 # 页面上的历史读数每次都按"今天的成分股名单 + 今天的十年数据"从头重算：名单季度调整、数据起点后移都会改写
 # 历史红/蓝/黄点（实测：只换 3 只成分股，2018-08-27、28 的红点消失；起点后移一年，2022-01-20 的黄点推迟到 01-24）。
 # 快照每天只追加截止日那一行，记下"当时页面上显示的是什么"，之后怎么重算都不回头改。
-# 策略持仓的状态机（红点 30 日、黄点锁仓、蓝点 40 日）在快照覆盖的日子里一律用快照，更早的日子只能用重算值。
 # 只由 GitHub 每日流水线写（环境变量 ALT_SNAPSHOT=1）：单一写入方，本地运行只读，免得两边各记一份互相冲突。
 SNAP_CSV = os.path.join(BASE, "_信号快照.csv")
 SNAP_FLAGS = (("实心红点", "hot", "red"), ("空心红点", "hot_ad", "red_ad"), ("实心蓝点", "cold", "blue"),
@@ -263,7 +262,6 @@ def snap_append(d, s):
         return 0
     at = lambda key, i, src=S: (lambda v: "" if v is None else v)((src.get(key) or [None] * len(dates))[i])
     flag = lambda key, i: ("" if F.get(key) is None else int(bool(F[key][i])))
-    st = d.get("strategy") or {}
     now = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
     sha = os.environ.get("GITHUB_SHA", "")[:7]
     rows = []
@@ -273,8 +271,7 @@ def snap_append(d, s):
                      d.get("sell_threshold"), at("th_adaptive", i)]
                     + [flag(k, i) for _, k, _ in SNAP_FLAGS]
                     + [at("temperature_fast", i), at("tdc", i), at("vix", i),
-                       st.get("state", "") if today else "",
-                       "; ".join(f"{h['sym']} {h['weight']:.4f}" for h in st.get("holdings", [])) if today and st else "",
+                       "", "",  # 保留历史CSV的两列位置；取消持仓功能后不再写入
                        now, sha])
     if s is None and not os.path.exists(SNAP_CSV):
         pd.DataFrame(columns=SNAP_COLS).to_csv(SNAP_CSV, index=False, encoding="utf-8")
@@ -646,14 +643,6 @@ def main():
         validate_display_history(d)
     # 长面板等非生产数据不读也不写快照（快照只对生产页面上显示过的信号成立）
     snap = snap_load() if a.raw is None else None
-    # —— 策略持仓（2026-09-28 加）：策略回测/live.py，规则与回测同一份代码；算不出来就不显示，不影响其余部分 ——
-    # 快照覆盖的日子用快照里的信号（2026-09-30 起）
-    try:
-        sys.path.insert(0, os.path.join(BASE, "策略回测"))
-        import live
-        d["strategy"] = live.current(d, E.RAW, snap=snap_signals(snap))
-    except Exception as exc:
-        print(f"  ! 策略持仓未计算：{exc}")
     if a.raw is None and os.environ.get("ALT_SNAPSHOT") == "1":
         n = snap_append(d, snap)
         print(f"  信号快照：新增 {n} 行 → {os.path.basename(SNAP_CSV)}" if n else "  信号快照：截止日已记过，不追加")
