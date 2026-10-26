@@ -265,6 +265,8 @@ body:has(#fdlg[open]){overflow:hidden}
     <h2 id="ndx-h2">与预警点位</h2>
     <p class="sub" id="ndx-sub"></p>
     <div class="rangebar" id="rangebar">
+      <span id="samplebtns" role="group" aria-label="样本区间"><button type="button" data-sample="in" aria-pressed="true">样本内</button><button type="button" data-sample="out" aria-pressed="false">样本外 · 2006–2016</button></span>
+      <span class="sep" aria-hidden="true"></span>
       <span id="rbtns"></span>
       <span class="sep" aria-hidden="true"></span>
       <div class="rslider" id="rslider">
@@ -525,6 +527,14 @@ $("marker").innerHTML =
 
 /* ---- 区间切换 ---- */
 const RANGES = [[252,"1年"],[756,"3年"],[1260,"5年"],[99999,"全部"]];
+const SAMPLE_RANGES = D.sample_ranges || {in:{start:"2017-10-18",end:D.as_of},out:{start:"2006-01-01",end:"2016-12-31"}};
+function sampleBounds(key){
+  const range = SAMPLE_RANGES[key], dates = D.series.dates;
+  const a = dates.findIndex(d => d >= range.start);
+  let b = dates.length - 1;
+  while (b >= 0 && dates[b] > range.end) b--;
+  return a >= 0 && b > a ? [a,b] : null;
+}
 let RSTART = Math.max(0, N - 756), REND = N - 1;   // 默认 3 年
 
 /* ---- shared chart helpers ---- */
@@ -757,7 +767,7 @@ function drawNdx(){
     const vx = D.series.vix ? D.series.vix[A + i] : null;
     tip.innerHTML = `<span style="color:#8DA2B8">${D2[i]}</span><br>` +
       `QQQ ${sp[i].toFixed(2)}` + (vx != null ? `　VIX ${vx.toFixed(1)}` : "") + `<br>` +
-      `<span style="color:${rg.hex}">● </span>温度 ${Sl[i].toFixed(1)} · ${rg.name}` +
+      (Sl[i] == null ? `<span style="color:#56687D">温度数据不足，未生成信号</span>` : `<span style="color:${rg.hex}">● </span>温度 ${Sl[i].toFixed(1)} · ${rg.name}`) +
       (SELLT && SELLT[A+i] != null ? `<br><span style="color:#56687D">红点温度 ${SELLT[A+i].toFixed(1)}</span>` : "") +
       (FAST && FAST[A+i] != null ? `<br><span style="color:#56687D">蓝点温度·当日口径 ${FAST[A+i].toFixed(1)}</span>` : "") +
       (NSCORE && NSCORE[A+i] != null ? `<br><span style="color:#56687D">上涨拥挤度 ${NSCORE[A+i].toFixed(0)}</span>` : "") +
@@ -1174,6 +1184,11 @@ const rmin = $("rmin"), rmax = $("rmax"), rfill = $("rfill");
 rmin.min = rmax.min = 0; rmin.max = rmax.max = N - 1;
 
 function syncPresetButtons(){
+  [...$("samplebtns").children].forEach(b => {
+    const bounds = sampleBounds(b.dataset.sample);
+    b.disabled = !bounds;
+    b.setAttribute("aria-pressed", !!bounds && RSTART >= bounds[0] && REND <= bounds[1]);
+  });
   const isAll = RSTART === 0 && REND === N - 1;
   [...$("rbtns").children].forEach(b => {
     const n = +b.dataset.n;
@@ -1201,6 +1216,12 @@ $("rbtns").addEventListener("click", ev => {
   const n = +b.dataset.n;
   setRange(n >= 99999 ? 0 : N - n, N - 1);
 });
+$("samplebtns").addEventListener("click", ev => {
+  const button = ev.target.closest("button[data-sample]");
+  if (!button) return;
+  const bounds = sampleBounds(button.dataset.sample);
+  if (bounds) setRange(...bounds);
+});
 let dragRAF = null;
 function onDrag(){
   if (dragRAF) return;
@@ -1224,8 +1245,10 @@ function subText(){
 }
 function ndxSub(){
   const A = RSTART;
+  const inside = key => {const b = sampleBounds(key);return b && A >= b[0] && REND <= b[1];};
+  const sample = inside("in") ? "样本内（参与权重标定）" : inside("out") ? "样本外（2006–2016，沿用现行规则）" : "跨区间历史展示";
   return `${D.ndx_label || "标的"} 收盘价，叠加同期三类情绪预警的触发点位。` +
-         `区间 ${D.series.dates[A]} 至 ${D.series.dates[REND]}。`;
+         `${sample} · 区间 ${D.series.dates[A]} 至 ${D.series.dates[REND]}。`;
 }
 setRange(RSTART, REND, false);
 

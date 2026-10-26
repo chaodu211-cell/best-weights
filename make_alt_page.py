@@ -29,10 +29,50 @@ TARGET = "QQQ"
 TARGET_LABEL = "纳斯达克100 · QQQ"
 
 
-# 页面显示起点（2026-09-30 起固定）：raw/ 接上了 2006 年起的长历史（hist_store.py），计算用全部历史——
-# TDC、自适应门槛这些长窗口指标在页面第一天就有完整回看期——显示仍从这一天开始，和接长历史之前的页面
-# 同一个起点（红点权重的标定窗口），页面上各项统计的口径不变。只对生产页面生效，--raw 时照旧显示全部。
-DISPLAY_FROM = "2017-10-18"
+# 计算一直使用全部历史；页面补展2006—2016年，不改权重、门槛或标定窗口。
+# 2017年标定前的过渡段保留在“全部”与自定义滑块中。
+DISPLAY_FROM = "2006-01-01"
+IN_SAMPLE_FROM = "2017-10-18"
+
+
+def extend_display_history(d, E, start):
+    """图表日历按QQQ交易日扩展；信号所需因子未预热时保留空值。"""
+    old_dates = d["series"]["dates"]
+    target = E.load(TARGET)
+    dates = target.loc[start:d["as_of"]].index
+    if not len(dates) or dates[0].strftime("%Y-%m-%d") >= old_dates[0]:
+        return d
+    labels = [str(t.date()) for t in dates]
+    positions = {day: i for i, day in enumerate(old_dates)}
+    n = len(old_dates)
+
+    def walk(obj):
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                if isinstance(value, list) and len(value) == n:
+                    missing = False if all(isinstance(v, bool) for v in value) else None
+                    obj[key] = [value[positions[day]] if day in positions else missing for day in labels]
+                else:
+                    walk(value)
+        elif isinstance(obj, list):
+            for value in obj:
+                walk(value)
+    walk(d)
+    d["series"]["dates"] = labels
+    rr, nominal = E.load_real_rate(), E.load_nominal_rate()
+    repricing = E.repricing_regime(rr, nominal)
+    sources = {"vix": (E.load_vix(dates), 2), "real_rate": (E.align_to(rr, dates), 2),
+               "rr_pct": (E.align_to(E.real_rate_speed_pct(rr), dates), 1),
+               "rr_lvl_pct": (E.align_to(E.real_rate_level_pct(rr), dates), 1)}
+    for key, (values, dp) in sources.items():
+        if values is not None:
+            prior = d["series"].get(key)
+            d["series"][key] = [prior[i] if prior is not None and labels[i] in positions
+                                else None if not np.isfinite(v) else round(float(v), dp)
+                                for i, v in enumerate(values)]
+    if repricing is not None:
+        d["series"]["repricing"] = E.align_to(repricing.astype(float), dates).fillna(0).astype(bool).tolist()
+    return d
 
 
 def trim_display(d, start):
@@ -583,8 +623,13 @@ def main():
     E.main()                       # 产出标准结构（不碰 data.json，OUT 已改向）
     d = json.load(open(out_json, encoding="utf-8"))
     if a.raw is None:
+        d = extend_display_history(d, E, DISPLAY_FROM)
         d = trim_display(d, DISPLAY_FROM)
     d = patch(d, E, A, log=(a.raw is None))   # 只有生产数据才写预先登记表
+    d["sample_ranges"] = {
+        "in": {"start": IN_SAMPLE_FROM, "end": d["as_of"]},
+        "out": {"start": "2006-01-01", "end": "2016-12-31"},
+    }
     # 长面板等非生产数据不读也不写快照（快照只对生产页面上显示过的信号成立）
     snap = snap_load() if a.raw is None else None
     # —— 策略持仓（2026-09-28 加）：策略回测/live.py，规则与回测同一份代码；算不出来就不显示，不影响其余部分 ——
