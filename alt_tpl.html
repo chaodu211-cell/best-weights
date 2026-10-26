@@ -767,7 +767,7 @@ function drawNdx(){
     const vx = D.series.vix ? D.series.vix[A + i] : null;
     tip.innerHTML = `<span style="color:#8DA2B8">${D2[i]}</span><br>` +
       `QQQ ${sp[i].toFixed(2)}` + (vx != null ? `　VIX ${vx.toFixed(1)}` : "") + `<br>` +
-      (Sl[i] == null ? `<span style="color:#56687D">温度数据不足，未生成信号</span>` : `<span style="color:${rg.hex}">● </span>温度 ${Sl[i].toFixed(1)} · ${rg.name}`) +
+      (Sl[i] == null ? `<span style="color:#56687D">红点温度数据不足</span>` : `<span style="color:${rg.hex}">● </span>温度 ${Sl[i].toFixed(1)} · ${rg.name}`) +
       (SELLT && SELLT[A+i] != null ? `<br><span style="color:#56687D">红点温度 ${SELLT[A+i].toFixed(1)}</span>` : "") +
       (FAST && FAST[A+i] != null ? `<br><span style="color:#56687D">蓝点温度·当日口径 ${FAST[A+i].toFixed(1)}</span>` : "") +
       (NSCORE && NSCORE[A+i] != null ? `<br><span style="color:#56687D">上涨拥挤度 ${NSCORE[A+i].toFixed(0)}</span>` : "") +
