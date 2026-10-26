@@ -60,6 +60,7 @@ def refresh_vix():
 BACKFILL_YEARS = 11   # 覆盖 10 年量价历史 + ERP 的 252 日分位预热
                       # 可用 --years 覆盖：样本前检验（oos_check.py）要回补到 2005，
                       # 否则实际利率序列只到 2015，空心蓝点闸门在 2006-2017 全程不启用。
+HISTORY_FROM_YEAR = 2004  # 2006年走势图及其滚动分位/重估期预热所需历史
 
 # 财政部两张表：名义收益率曲线、实际（TIPS）收益率曲线。列名不同，其余格式一致。
 CURVES = {
@@ -101,6 +102,18 @@ def refresh_curve(kind):
     综合温度整条序列为空。故此处按年检查覆盖度，缺哪年补哪年（已齐备则只拉当年）。
     """
     path = os.path.join(RAW, CURVES[kind][2])
+    # Actions缓存不保证含十年前的利率。补入受版本控制的财政部历史存档；
+    # 已有同日观察优先保留，只填缺失日期，避免覆盖后续修订或最近读数。
+    archive = os.path.join(BASE, "hist", "treasury_" + kind + "_2004-2014.csv")
+    existing = set()
+    if os.path.exists(path):
+        with open(path) as f:
+            existing = {row[0] for row in csv.reader(f) if row}
+    if os.path.exists(archive):
+        with open(archive) as f:
+            missing = [(d, v) for d, v in csv.reader(f) if d not in existing]
+        if missing:
+            merge(path, missing)
     have = {}
     if os.path.exists(path):
         with open(path) as f:
@@ -109,7 +122,8 @@ def refresh_curve(kind):
                 if line:
                     have[line.split(",", 1)[0][:4]] = have.get(line.split(",", 1)[0][:4], 0) + 1
     cur = datetime.utcnow().year
-    todo = [y for y in range(cur - BACKFILL_YEARS, cur) if have.get(str(y), 0) < 200] + [cur]
+    first = min(cur - BACKFILL_YEARS, HISTORY_FROM_YEAR)
+    todo = [y for y in range(first, cur) if have.get(str(y), 0) < 200] + [cur]
     if len(todo) > 1:
         print(f"       {CURVES[kind][3]} 回补历史年份 {todo[0]}–{todo[-2]}（本地缺失）…")
     rows = []

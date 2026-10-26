@@ -97,6 +97,18 @@ def trim_display(d, start):
     return d
 
 
+def validate_display_history(d):
+    """拒绝发布旧段输入缺失、却被显示成蓝点从未触发的页面。"""
+    dates = d["series"]["dates"]
+    if not dates or dates[0] > "2006-12-31" or dates[-1] < "2008-01-01":
+        return
+    early = [i for i, day in enumerate(dates) if day < "2008-01-01"]
+    for label, values in (("实际利率", d["series"].get("real_rate")),
+                          ("蓝点当日温度", d["series"].get("temperature_fast"))):
+        if not values or not any(values[i] is not None for i in early):
+            raise ValueError(f"样本外{label}历史缺失，不能把缺测显示成未触发；请补齐利率与因子输入")
+
+
 PREREG_CSV = os.path.join(BASE, "_红点预登记.csv")
 PREREG_COLS = ["信号", "首日", "温度", "门槛", "登记时间"]
 
@@ -630,6 +642,8 @@ def main():
         "in": {"start": IN_SAMPLE_FROM, "end": d["as_of"]},
         "out": {"start": "2006-01-01", "end": "2016-12-31"},
     }
+    if a.raw is None:
+        validate_display_history(d)
     # 长面板等非生产数据不读也不写快照（快照只对生产页面上显示过的信号成立）
     snap = snap_load() if a.raw is None else None
     # —— 策略持仓（2026-09-28 加）：策略回测/live.py，规则与回测同一份代码；算不出来就不显示，不影响其余部分 ——
