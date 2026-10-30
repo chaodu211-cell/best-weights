@@ -1,5 +1,5 @@
 {
- "updated": "2026-09-30",
+ "updated": "2026-10-31",
  "source": "stockanalysis.com 发行商页面的基金全称",
  "rule": "倍数绝对值 > 1 的单股杠杆/反向 ETF；GOOG 并入 GOOGL",
  "stocks": {
@@ -520,15 +520,6 @@
      -1.5
     ]
    ]
-  },
-  "NXPI": {
-   "long": [
-    [
-     "NXPX",
-     2.0
-    ]
-   ],
-   "short": []
   },
   "ON": {
    "long": [
