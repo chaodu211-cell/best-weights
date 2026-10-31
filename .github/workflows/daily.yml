@@ -84,6 +84,8 @@ jobs:
       built: ${{ steps.site.outputs.built }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
 
       # 不开 cache: pip —— 仓库没有 requirements.txt，开了会直接报错
       - uses: actions/setup-python@v5
@@ -178,6 +180,7 @@ jobs:
 
       - uses: actions/upload-pages-artifact@v3
         with:
+          name: github-pages-${{ github.run_attempt }}
           path: _site
 
       # 信号快照、预先登记表、hist/ 长历史存档都「只追加、不改写」，必须跨运行保存。
@@ -253,3 +256,5 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
