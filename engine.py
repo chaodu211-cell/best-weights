@@ -199,6 +199,27 @@ def load_many(tickers):
     return out
 
 
+def load_stocks():
+    """成分股行情，每只只保留它当时在标普 500 里的日子（members.json 的在册区间，2026-11-10 加，来历见 members.py）。
+
+    以前直接 load_many(STOCKS)：今天的名单回填全部历史，后来才纳入的股票提前出现在横截面因子里
+    （TOP2、前 2% 成交额占比、站上 MA20、换手率…），名单每调整一次历史读数也整段改写。
+    没有 members.json（us2 原样、或只拿到 sectors.json）时与 load_many(STOCKS) 完全相同。
+    在册不足 30 个交易日的不进样本，和 load_many 对新上市股票的处理一样。
+    """
+    import members as MB
+    led = MB.load()
+    out = load_many(STOCKS)
+    if not led:
+        return out
+    cut = {}
+    for t, d in out.items():
+        d = d[MB.active(led, t, d.index)]
+        if len(d) > 30:
+            cut[t] = d
+    return cut
+
+
 # ---------- 滚动分位 ----------
 def rolling_pct(s, window=WINDOW, min_periods=MIN_PERIODS):
     """当前值在过去 window 个观测中的百分位（0-100）。
@@ -261,7 +282,12 @@ def complete_through(idx, stocks, spy):
         ok &= spy["close"].reindex(idx).notna()
     if stocks:
         px = pd.DataFrame({t: d["close"] for t, d in stocks.items()}).reindex(idx)
-        ok &= (px.notna().sum(axis=1) / len(stocks) >= 0.90)
+        # 分母是「那天本该在册的成分股数」，不是样本里出现过的总只数：按在册区间取样本后（load_stocks），
+        # 被剔除的旧成员最近没有行情是正常的，不该算进缺口。没有 members.json 时两者相同。
+        import members as MB
+        led = MB.load()
+        due = (sum(MB.active(led, t, idx).astype(int) for t in stocks) if led else len(stocks))
+        ok &= (px.notna().sum(axis=1) / np.maximum(due, 1) >= 0.90)
     ok &= (cover(LEV_LONG) >= 0.5)
     ok &= (cover(LEV_SHORT) >= 0.5)
 
@@ -277,7 +303,7 @@ def complete_through(idx, stocks, spy):
 
 
 def build_indicators():
-    stocks = load_many(STOCKS)
+    stocks = load_stocks()
     etfs = load_many(list(SECTOR_ETFS))
     levs = load_many(LEV_ETFS)
     spy = load("SPY")

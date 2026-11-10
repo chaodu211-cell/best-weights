@@ -95,7 +95,13 @@ ALT_W = {"narrow": 1.0, "top2": 2.0, "lev": 3.0, "vix_abs": 2.0, "topshare": 1.0
 # 改权重必须同时重标门槛——2026-09-20 减半时重标到 81.6，回退时一并改回 81.7。
 # 2026-10-01 等权一侧换成 RSP（EW_SYM）后重标，训练窗 2017-10-18~2026-09-30：连 3 日温度第 65~67 高并列 82.569，
 # 恰好 66 天取不到，取最接近的 82.5（67 天/8 段，与换源前 81.7 的 67 天同频）；82.6 只剩 64 天。
-ALT_TH = 82.5
+# 2026-11-10 成分股改按在册区间取样本（members.py：后来才纳入的股票，纳入日之前不进横截面因子）后重标。
+# 同一训练窗里新口径连 3 日温度第 64~67 高是 82.21 / 82.21 / 82.21 / 82.20，第 68 高 81.94：82.0~82.2 都是 67 天/7 次，
+# 取中间的 82.1（与此前 82.5 的 67 天同频，ALT_DESIGN_RATE 不变）；门槛留在 82.5 只剩 63 天。
+# 新旧对照（同一份行情，训练窗，之后 30 日 QQQ）：旧 67 天/8 次、比基准 −11.25pp、93% 为负、事件首日 −2.24%；
+# 新 67 天/7 次、−8.95pp、82% 为负、事件首日 −3.36%；抓到的下跌顶都是 5/8。少掉的主要是 2020-01~02 那段（26 → 17 天，
+# 当时还没进指数的特斯拉占了全篮子成交额的一成多）和 2017-11-07 那 1 天误报。以前的数字偏乐观，现在这个更接近当时真能看到的。
+ALT_TH = 82.1
 ALT_PERSIST = 3
 
 # —— 红点有效性检验（2026-09-24 加，只加显示与一种并列信号，不改上面的红点）——
@@ -187,7 +193,8 @@ def lev_single(idx, lev_pct):
     dvb = LV._sum_dv({t: d for t, d in base.items() if d is not None}, idx)
     if dvl is None or dvs is None or dvb is None:
         return lev_pct, None, None
-    sdv = pd.DataFrame({t: LV.dollar_volume(d) for t, d in E.load_many(E.STOCKS).items()}).reindex(idx)
+    # 正股成交额排名只在当时在册的成分股里排（E.load_stocks，2026-11-10 起；此前是今天的名单）
+    sdv = pd.DataFrame({t: LV.dollar_volume(d) for t, d in E.load_stocks().items()}).reindex(idx)
     edv = pd.DataFrame({t: LV.dollar_volume(d) for t, d in got.items()}).reindex(idx)
     la, sa, picks = SL.components(idx, sdv, edv, m)
     L, S = dvl + la, dvs + sa

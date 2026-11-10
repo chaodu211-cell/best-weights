@@ -473,6 +473,38 @@ def t_merge():
 t_merge()
 print("\n增量用例全部通过" if ok else "\n增量用例有失败")
 
+# ---- 成分股在册区间（members.py，2026-11-10）----
+def t_members():
+    import members as MB
+    uni = {f"S{i:03d}": "工业" for i in range(500)}
+    add = {s: None for s in uni}; add["S001"] = "2020-12-21"
+    led, _ = MB.update({}, uni, add, "2026-11-10")
+    idx = pd.to_datetime(["2020-12-18", "2020-12-21", "2026-11-09", "2026-11-10", "2026-11-11"])
+    chk("在册：纳入日之前不在册、纳入日当天起在册", list(MB.active(led, "S001", idx)) == [False, True, True, True, True])
+    chk("在册：纳入日未知的按一直在册", MB.active(led, "S000", idx).all())
+    chk("在册：台账里没有的代码按一直在册", MB.active(led, "ZZZ", idx).all())
+    # 剔除：保留条目，剔除日当天起不在册
+    uni2 = {s: v for s, v in uni.items() if s != "S001"}; uni2["NEW"] = "金融"
+    led2, notes = MB.update(led, uni2, {"NEW": "2026-11-10"}, "2026-11-10")
+    chk("在册：被剔除的留在台账里，只算到剔除日前一天",
+        "S001" in led2 and list(MB.active(led2, "S001", idx)) == [False, True, True, False, False])
+    chk("在册：新成员只从纳入日算起", list(MB.active(led2, "NEW", idx)) == [False, False, False, True, True])
+    chk("在册：更新不改动传入的旧台账", led["S001"]["spans"] == [["2020-12-21", None]])
+    # 已记下的纳入日不跟着维基百科改
+    led3, _ = MB.update(led2, uni2, {"NEW": "2019-01-01"}, "2026-11-11")
+    chk("在册：已记下的纳入日不再改", led3["NEW"]["spans"] == [["2026-11-10", None]])
+    # 重新纳入：新开一段；名单抖动（纳入日不晚于剔除日）：接回原区间
+    led4, _ = MB.update(led2, dict(uni2, S001="工业"), {"S001": "2027-03-01"}, "2027-03-01")
+    chk("在册：重新纳入新开一段", led4["S001"]["spans"] == [["2020-12-21", "2026-11-10"], ["2027-03-01", None]])
+    led5, _ = MB.update(led2, dict(uni2, S001="工业"), {"S001": "2020-12-21"}, "2026-11-11")
+    chk("在册：名单抖动接回原区间", led5["S001"]["spans"] == [["2020-12-21", None]])
+    # 名单解析坏了（只数太少）：台账不动
+    led6, notes = MB.update(led2, {"S000": "工业"}, {}, "2026-11-12")
+    chk("在册：名单过短时台账不动", led6 is led2 and len(notes) == 1)
+
+t_members()
+print("\n在册区间用例全部通过" if ok else "\n在册区间用例有失败")
+
 # 退出码：任一 chk 失败即非零。CI 靠这个判定成败——
 # 没有它的话，脚本打印一堆 FAIL 仍然 exit 0，workflow 会一路绿灯放行。
 if not ok:

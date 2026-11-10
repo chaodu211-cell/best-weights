@@ -13,13 +13,14 @@
     python3 fetch_sp500.py              # 全量拉取
     python3 fetch_sp500.py --limit 30   # 只拉前 30 只（快速验证）
 
-输出：raw/<TICKER>.csv（date,adjclose,close,volume，新到旧）、sectors.json
+输出：raw/<TICKER>.csv（date,adjclose,close,volume，新到旧）、sectors.json、members.json（成分股在册区间，见 members.py）
 """
 import argparse, json, os, re, ssl, sys, threading, time
 import urllib.error, urllib.parse, urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import hist_store as H   # raw/ 只增不减 + hist/ 长历史存档（2026-09-30）
 import single_lev as SL  # 红点杠杆因子并入的单股杠杆 ETF（2026-09-30）
+import members as MB     # 成分股在册区间台账 members.json（2026-11-10）
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -55,6 +56,7 @@ CUTOFF = complete_cutoff()
 # 没写进表里的改名，fetch_one 会顺着数据源页面的 301 自动识别（核对过与本地旧行是同一只票才用），并提示补进来。
 RENAMED = {"PSKY": "SKYD"}
 MOVED = {}      # 本次运行自动识别出的改名 {旧代码: 新代码}
+ADDED = {}      # 本次从维基百科读到的纳入日 {代码: 'YYYY-MM-DD' 或 None}，constituents() 顺带填，给 members.json 用
 
 GICS_CN = {
     "Information Technology": "信息技术", "Communication Services": "通信服务",
@@ -122,9 +124,12 @@ def constituents():
         sym, sector = clean(cells[0]), clean(cells[2])
         if re.fullmatch(r"[A-Z][A-Z.\-]{0,6}", sym):
             out[sym.replace(".", "-")] = GICS_CN.get(sector, sector)
+            d = re.search(r"\d{4}-\d{2}-\d{2}", clean(cells[5])) if len(cells) > 5 else None   # Date added
+            ADDED[sym.replace(".", "-")] = d.group(0) if d else None
     for old, new in RENAMED.items():          # 维基百科跟进改名后，折回旧代码，见 RENAMED
         if new in out and old not in out:
             out[old] = out.pop(new)
+            ADDED[old] = ADDED.pop(new, None)
     return out
 
 
@@ -341,7 +346,17 @@ def main():
         note = SL.maybe_refresh(get, set(uni))
         if note:
             print("   " + note)
+    # 成分股在册区间台账（members.py）：新成员记下纳入日，不在名单里的记下剔除日并保留。被剔除的照样留在样本里
+    # （只算到剔除日为止），行情也继续拉——Actions 的 raw/ 缓存丢了要能重下回来；拉不到就沿用本地已有的行。
+    gone = {}
+    if not a.limit:
+        led, notes = MB.update(MB.load(), uni, ADDED, CUTOFF)
+        MB.save(led)
+        for n_ in notes:
+            print("   成分股台账：" + n_)
+        gone = {s: v["sector"] for s, v in led.items() if s not in uni}
     targets = [(s, False) for s in uni] + [(s, True) for s in ETFS if s not in uni]
+    targets += [(s, False) for s in gone]
     targets += [(s, True) for s in SL.etfs() if s not in uni and s not in ETFS]
 
     # 距上次全量太久就强制全量一次：增量每次只校验重叠区间，长期跑下去总有边角情况
@@ -410,6 +425,8 @@ def main():
         if loc:
             stale[s] = max(r[0] for r in loc)
     sectors = {s: v for s, v in uni.items() if s in okset or s in stale}
+    # 已被剔除、本地还有行情的旧成员也留在 sectors.json 里：引擎按 members.json 的在册区间只用到剔除日
+    sectors.update({s: v for s, v in gone.items() if s in okset or _read_local(s)})
     json.dump(sectors, open(os.path.join(BASE, "sectors.json"), "w"), ensure_ascii=False, indent=1)
     # 给流水线的 status.json 与运行摘要用：哪些标的没拉到、哪些成分股在沿用旧行、哪些是自动识别的改名
     json.dump({"cutoff": CUTOFF, "failed": sorted(s for s, _ in fail), "stale": stale, "moved": MOVED},

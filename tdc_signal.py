@@ -8,6 +8,7 @@
 
 TDC = 三条腿等权，腿内三因子等权，每个因子先做 1260 日滚动分位（0~100）：
     内部损伤  成分股站上MA200比例 · 创52周新低比例 · 已跌入熊市的成分股比例
+              （2026-11-10 起只数当天在册的成分股，见 members.py；均线、52 周高低点仍用每只股票自己的完整历史算）
     波动中枢  20日已实现波动 · 20日内跌1%以上的天数 · VIX的20日最低值
     趋势结构  距MA200偏离 · 120日动量 · MA50−MA200
 因子筛选与全部反面证据见「趋势下跌确认.md」。
@@ -82,16 +83,21 @@ def load(raw=None):
     ndx = _read(raw, "QQQ")
     if ndx is None:
         raise FileNotFoundError(f"缺 {raw / 'QQQ.csv'}：黄点闸门按纳指回撤算")
-    return px, vix, const, ndx.reindex(px.index)
+    # 在册掩码：每只股票只在它当时确实在指数里的日子计数（没有 members.json 时全为 True，与以前相同）
+    import members as MB
+    led = MB.load()
+    member = pd.DataFrame({s: MB.active(led, s, const.index) for s in const.columns}, index=const.index)
+    return px, vix, const, ndx.reindex(px.index), member
 
 
-def factors(px, vix, const):
+def factors(px, vix, const, member=None):
     F = pd.DataFrame(index=px.index)
     r = px.pct_change()
-    n = const.notna().sum(axis=1).replace(0, np.nan)
-    F["F1_pct_ma200"] = -(const > const.rolling(200).mean()).sum(axis=1) / n * 100
-    F["F6_nl"] = (const <= const.rolling(252).min()).sum(axis=1) / n * 100
-    F["F9_pct_bear"] = (const / const.rolling(252).max() - 1 <= -0.20).sum(axis=1) / n * 100
+    ok = const.notna() if member is None else (const.notna() & member)
+    n = ok.sum(axis=1).replace(0, np.nan)
+    F["F1_pct_ma200"] = -((const > const.rolling(200).mean()) & ok).sum(axis=1) / n * 100
+    F["F6_nl"] = ((const <= const.rolling(252).min()) & ok).sum(axis=1) / n * 100
+    F["F9_pct_bear"] = ((const / const.rolling(252).max() - 1 <= -0.20) & ok).sum(axis=1) / n * 100
     F["C5_rv20"] = r.rolling(20).std() * np.sqrt(252) * 100
     F["C8_bigdown"] = (r <= -0.01).rolling(20).sum()
     F["C9_vixfloor"] = vix.rolling(20).min()
@@ -103,8 +109,8 @@ def factors(px, vix, const):
 
 def compute(raw=None):
     """→ dict(tdc, legs, dd=纳指回撤（闸门用）, dd_spx, red=报警日, void=作废日, armed=末日是否武装)"""
-    px, vix, const, ndx = load(raw)
-    F = factors(px, vix, const)
+    px, vix, const, ndx, member = load(raw)
+    F = factors(px, vix, const, member)
     P = F.rolling(WIN, min_periods=MINP).rank(pct=True) * 100
     legs = pd.DataFrame({k: P[v].mean(axis=1) for k, v in LEGS.items()})
     S = legs.mean(axis=1)
