@@ -3,27 +3,26 @@ name: daily
 # 最优拟合：每个美股交易日拉行情 → alt_refresh.py 重算 → 发布到 GitHub Pages。
 #
 # 分工：GitHub 负责算，Claude 负责推送。
-#   · 本工作流：北京时间 19:07 左右（周一至周五）跑完整条流水线，页面发布到
+#   · 本工作流：纽约收盘后跑完整条流水线，页面发布到
 #     https://chaodu211-cell.github.io/best-weights/ ，同目录下另有 status.json（截至日、抓取是否成功）。
 #     每次把截止日的读数与信号追加进 _信号快照.csv 并提交回 main（机器人每天一次提交，本地推送前先 pull --rebase）。
 #   · Claude 的定时任务：北京时间 21:00 前后读取上面那个页面，更新 Artifact，
 #     出现红点 / 空心红点 / 蓝点、或任一分项连续 5 日 > 90 时推送到手机。
 #
-# 准时由外部负责：2026-10 起 GitHub 的定时触发常晚 6 小时以上（10-07 三条 cron 北京 01:45~02:58 才到，
-# 正赶上美股盘中），备份 cron 也一起晚。所以每个工作日北京 19:18 由 Claude 定时任务手动运行（workflow_dispatch）
-# 本工作流；下面三条 cron 只作兜底，晚到时若线上 status.json 显示今天的数据已发布就整趟跳过。
+# Actions 的 cron 曾晚到数小时。主运行提前，另设两个错开整点的补跑。
+# 仍可用 workflow_dispatch 手动触发；定时补跑按线上数据截止日判断是否跳过。
 #
 # raw/ 原始日线不进 git，用 actions/cache 在两次运行之间保存。数据源只给 10 年，更早的部分由 hist/（进 git）
 # 补回：缓存丢了也能从 hist/ 还原出 2004 年起的长历史（hist_store.py）。
 on:
   schedule:
-    # 11:07 UTC = 北京 19:07 = 美东 07:07（夏令时）/ 06:07（冬令时），前一交易日收盘数据已齐。
-    # 比 21:00 的 Claude 任务早约两小时：GitHub 定时任务常晚 10~60 分钟，首次全量下载也要十几分钟。
-    # 分钟取 7 而不是 0：整点是全 GitHub 排队最严重的时刻。
-    # 周一这次拿到的是上周五的收盘，所以周一到周五五次运行正好覆盖每个交易日。
-    - cron: "7 11 * * 1-5"    # 北京 19:07 主运行
-    - cron: "41 11 * * 1-5"   # 北京 19:41 备份：GitHub 偶尔会丢掉定时运行
-    - cron: "17 12 * * 1-5"   # 北京 20:17 备份
+    # 纽约时间：收盘后 17:17 主更新，22:11 和下个工作日 05:47 补跑。
+    - cron: "17 17 * * 1-5"
+      timezone: "America/New_York"
+    - cron: "11 22 * * 1-5"
+      timezone: "America/New_York"
+    - cron: "47 5 * * 1-5"
+      timezone: "America/New_York"
   # 代码一合进 main 就重建页面，改完引擎不用手动跑任何东西（只改文档不触发）
   push:
     branches: [main]
@@ -45,8 +44,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # 定时运行先看线上 status.json：北京 19:00 之后已有一次抓取成功的发布，就说明今天的数据已到，跳过。
-  # 三条 cron 都拦（主运行也可能被 19:18 的手动运行抢先）；代码推送、手动运行照常跑。读不到 status.json 时不跳过（宁可多跑一次）。
+  # 只有线上已发布最近一个已收盘工作日的数据，才跳过定时补跑。
+  # 读不到状态时照跑；代码推送和手动运行照常。
   check:
     runs-on: ubuntu-latest
     outputs:
@@ -58,14 +57,20 @@ jobs:
           curl -fsS --retry 3 "https://chaodu211-cell.github.io/best-weights/status.json?t=$(date +%s)" -o status.json || exit 0
           python3 - <<'PY'
           import json, os
-          from datetime import datetime, timezone
+          from datetime import datetime, timedelta
+          from zoneinfo import ZoneInfo
           st = json.load(open("status.json", encoding="utf-8"))
-          now = datetime.now(timezone.utc)
-          cutoff = now.replace(hour=11, minute=0, second=0, microsecond=0)   # 当天 11:00 UTC = 北京 19:00
-          gen = datetime.fromisoformat(st["generated_at"].replace("Z", "+00:00"))
-          skip = bool(st.get("fetch_ok")) and gen >= cutoff
-          print(f"线上 status.json：截至 {st['as_of']}，生成于 {st['generated_at']}，抓取成功 {st.get('fetch_ok')} → "
-                + ("今天的数据已有，跳过" if skip else "还没有今天的数据，照跑"))
+          now = datetime.now(ZoneInfo("America/New_York"))
+          expected = now.date()
+          if (now.hour, now.minute) < (16, 30):
+              expected -= timedelta(days=1)
+          # 周末回退到周五；遇交易所假日或源数据未齐时，保留补跑机会。
+          while expected.weekday() >= 5:
+              expected -= timedelta(days=1)
+          as_of = st.get("as_of") or ""
+          skip = bool(st.get("fetch_ok")) and as_of >= expected.isoformat()
+          print(f"线上截至 {as_of}，预期至少 {expected}，抓取成功 {st.get('fetch_ok')} → "
+                + ("已发布，跳过" if skip else "继续更新"))
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"skip={'true' if skip else 'false'}\n")
           PY
