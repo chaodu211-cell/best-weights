@@ -1,0 +1,47 @@
+{
+  "source_sha256": "82827042ce7eaae1592158884202b538e24ee05631d2891732bfc8661a8475c1",
+  "page": {
+    "before_path": "/private/tmp/retest_20261111/before_data_alt.json",
+    "after_path": "/private/tmp/retest_20261111/after_data_alt.json",
+    "as_of": "2026-11-09",
+    "days": 5246,
+    "generated_at": "2026-11-11T12:43:51Z",
+    "generated_at_fixed_in_second_run": true,
+    "deep_equal": true,
+    "byte_equal": true,
+    "added_fields": 0,
+    "sha256": "2a98033e2fd6a931b782d52007df9d587c5a1324804efe81dac4e8e0a4362bc1",
+    "red_flags_equal_to_backtest": true,
+    "red_days": 75,
+    "adaptive_red_days": 180,
+    "registration_paths": "temporary copies",
+    "production_raw_unchanged": true
+  },
+  "tests": {
+    "command": "python3 test_engine.py",
+    "exit_code": 0,
+    "passes": 114,
+    "failures": 0,
+    "log_sha256": "fd11ec8886122f45a9612712c1908da87ddeb86fd003778517304e6d4a5e4eb5",
+    "code_sha256": "a0344cc0356e4280c20301eb3d62bb7f87ee24ceadc2131d13d0499ca9017b7a"
+  },
+  "original_files_sha256": {
+    "_红点预登记.csv": "ecc8387c6b98763e431ceeb255458171d17bd3c631d8fcce5b8964e40dc1d6d7",
+    "_漏报预登记.csv": "dd69aa86ffb19a467961a1047b1786c3b2ea5447ee0916b7d1ed4e5634d3ee62",
+    "_信号快照.csv": "5ce541492a7e094a29ac550cb826df2dbe76aff67f142ce1f03e59954e169ec3",
+    "data_alt.json": "ee30928b49d4c22b89ed4ba70e94b8497e7f8cb7e5b3f952ffa4884d5413c719",
+    "dashboard_alt.html": "19caaf5970eeb58fdbd4c81acae830f2d8042a0c5091f58979b442cf4c2e7c4d"
+  },
+  "original_files_verified": true,
+  "comparison_events_independently_verified": 55,
+  "production_files_verified": true,
+  "git_commits": 0,
+  "git_pushes": 0,
+  "hist": {
+    "restored_rows": 3273,
+    "first": "2004-01-02",
+    "max_relative_error": 9.910981367267091e-06,
+    "archive_files": 160
+  },
+  "backtest_sha256": "f54f246f49f5679b7b742bbfc0fdae1d68c9b5b0c35e5e816b3e99c3757d08eb"
+}

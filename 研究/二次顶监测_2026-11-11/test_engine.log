@@ -1,0 +1,136 @@
+1) 滚动分位 vs scipy.percentileofscore('mean')
+  PASS  与 scipy 结果一致  最大偏差=7.11e-15
+  PASS  窗口=252：第252个点(idx251)才有值
+2) 边界情形
+  PASS  单调递增序列分位恒为最高  值=99.8016
+  PASS  单调递减序列分位恒为最低  值=0.1984
+3) ERP 反向 + 等权合成
+  PASS  输出6个指标  ['turnover', 'top2', 'advancing', 'ma20', 'leverage', 'erp']
+  PASS  ERP 分位已取反 (100-pct)
+  PASS  温度=六项分位等权平均
+  PASS  温度落在 0-100  [33.1,74.3]
+  PASS  无方向序列时修正=原始
+3b) 方向修正
+  PASS  turnover 已按方向定向
+  PASS  top2 未被改动
+  PASS  advancing 未被改动
+  PASS  ma20 未被改动
+  PASS  leverage 未被改动
+  PASS  erp 未被改动
+  PASS  修正后温度仍在 0-100  [39.4,73.8]
+  PASS  方向=0 时活跃度记为中性50
+4) 任一指标缺失则不出温度
+  PASS  末日有缺失 -> 温度为空
+5) 情绪区间划分
+  PASS  十个边界值全部正确（边界 20/40/60/80）
+6) 新参照系
+  PASS  绝对锚点映射：中锚→50
+  PASS  绝对锚点映射：低于低锚截断为0
+  PASS  绝对锚点映射：高于高锚截断为100
+  PASS  绝对映射与年份无关（同值同读数）
+  PASS  扩张分位：单调递增序列恒为最高  min=100.00
+  PASS  扩张分位无前视：第252点才有值
+
+全部通过
+  PASS  重估期：分位预热完成前不判定（无前视）
+  PASS  重估期：从低位快速修复的那一段确实触发  共 169 天
+  PASS  重估期：水位低但没在涨 → 不触发（只看水位会把 2020-03 判反）  低位段水位分位中位 30，触发 0 天
+  PASS  重估期：水位修复到位后退出  高位横盘段仍为真 0 天，水位分位 76
+  PASS  重估期：同样的涨速发生在高水位时不触发（2018Q4 那种）  涨速分位最高 100，水位分位最低 87，触发 0 天
+  PASS  重估期：滞回让短暂回落不熄灭
+  PASS  重估期：名义利率下行时不触发（通缩式上行不算重估）
+  PASS  重估期：涨幅达不到绝对下限时不入场（死水利率环境的噪声）
+  PASS  重估期：无数据时返回 None
+  PASS  重估期：缺名义利率时整条闸门不启用
+  PASS  涨速分位：预热期无读数
+  PASS  水位分位：预热期无读数
+  PASS  涨速分位：历史最快的一段读数接近 100  max=99.93
+  PASS  水位分位：历史最高的一段读数接近 100  max=99.96
+  PASS  涨速分位：无前视（截断后公共区段不变）
+  PASS  水位分位：无前视（截断后公共区段不变）
+  PASS  熊市状态：单调上涨从不成立
+  PASS  熊市状态：单调下跌在均线成型后恒成立
+  PASS  熊市状态：均线未成型前不判定（无前视）
+  PASS  预警键集合与 ALERTS 声明一致  build_alerts=['cold', 'cold_soft', 'crowd', 'hot'] ALERTS=['cold', 'cold_soft', 'crowd', 'hot']
+  PASS  实心蓝点与空心蓝点互斥
+  PASS  减仓温度=SELL_W 加权平均
+  PASS  减仓温度不含 ERP 与上涨占比  ['leverage', 'ma20', 'narrow', 'top2', 'turnover']
+  PASS  减仓温度落在 0-100  [36.7,63.3]
+  PASS  末日分项缺失 -> 减仓温度为空
+  PASS  末日上涨拥挤度缺失 -> 减仓温度为空
+  PASS  拿不到上涨拥挤度时返回 None
+  PASS  减仓温度无前视
+  PASS  上涨拥挤度中性版：历史不足处仍为 NaN
+  PASS  上涨拥挤度中性版：上涨市保留原值
+  PASS  上涨拥挤度中性版：下跌市填 50
+  PASS  k = ceil(frac × 有效样本数)
+  PASS  样本少时 k 至少为 1
+  PASS  越集中读数越高  2.0 -> 50.5
+  PASS  _topshare 不进分位表（compose 跳过下划线列）
+  PASS  _topshare 存在与否不改变蓝点温度
+  PASS  红点温度权重表不含 topshare
+  PASS  黑框抱团门槛与上涨拥挤度门槛是两把尺子（分位 vs 评分）
+  PASS  红点由减仓温度触发（主温度仅50）
+  PASS  减仓温度低于门槛则不触发红点
+  PASS  未提供减仓温度时退回主温度口径
+  PASS  蓝点门槛用 COLD_TH（低于则触发）
+  PASS  蓝点门槛用 COLD_TH（高于则不触发）
+  PASS  VIX 差一点就不触发蓝点
+  PASS  黑框门槛用 CROWD_TOP2/CROWD_NARROW（越过则触发）
+  PASS  黑框：上涨拥挤度不够则不触发
+  PASS  黑框：TOP2 抱团分位不够则不触发
+  PASS  黑框：拿不到上涨拥挤度时不触发
+  PASS  黑框抱团闸门优先用 topshare（topshare 够则触发，哪怕 top2 不够）
+  PASS  黑框抱团闸门优先用 topshare（topshare 不够则不触发，哪怕 top2 够）
+  PASS  缺 topshare 时退回 top2（与旧版行为一致）
+  PASS  橙线预警已取消（ALERTS 中无 narrow）
+  PASS  橙线预警已取消（build_alerts 不产出 narrow）
+  PASS  红点需连续 3 日才置位
+
+新增用例全部通过
+
+11) 杠杆ETF两条腿
+  PASS  多空比 = 做多成交额/杠杆总成交额
+  PASS  交易强度 = 杠杆总成交额/指数ETF成交额
+  PASS  两条腿都给了未平滑当日值
+  PASS  拆股不制造跳变（成交额用未复权价×成交量）
+  PASS  缺做空篮子：不出多空比
+  PASS  缺做空篮子：强度退化为只含做多
+12) 杠杆温度的合成
+  PASS  按 LEV_W 加权（多空比:强度 = 3:1）  读数=65.0
+  PASS  方向腿权重更高（3:1，选法见 leverage.py 注释）
+  PASS  缺一项时按剩余权重归一（不补 50）
+  PASS  两项全缺 -> 空
+  PASS  权重就是 LEV_W 里写的那两项
+  PASS  两处平滑窗口没分叉（LEV_SMOOTH == TO_SMOOTH）  5 vs 5
+13) 接线：减仓温度那一格换成杠杆温度
+  PASS  杠杆那一格确实被顶替（差值=权重×两者之差）
+  PASS  不传 lev_temp 时行为与旧版一致
+  PASS  杠杆温度全空时该日不出减仓温度
+14) 杠杆温度无前视
+  PASS  改动第 300 天之后的输入不影响之前的读数
+  PASS  分位与页面其余分项同尺（走 engine.rolling_pct）
+  PASS  温度落在 0-100
+
+杠杆温度用例全部通过
+  PASS  增量：正常追加不触发全量
+  PASS  增量：新日期被并入
+  PASS  增量：旧历史被保留
+  PASS  增量：结果按日期新到旧
+  PASS  增量：复权刻度变化触发全量
+  PASS  增量：微小浮点差异不触发全量
+  PASS  增量：无重叠时拒绝拼接、退回全量
+
+增量用例全部通过
+  PASS  在册：纳入日之前不在册、纳入日当天起在册
+  PASS  在册：纳入日未知的按一直在册
+  PASS  在册：台账里没有的代码按一直在册
+  PASS  在册：被剔除的留在台账里，只算到剔除日前一天
+  PASS  在册：新成员只从纳入日算起
+  PASS  在册：更新不改动传入的旧台账
+  PASS  在册：已记下的纳入日不再改
+  PASS  在册：重新纳入新开一段
+  PASS  在册：名单抖动接回原区间
+  PASS  在册：名单过短时台账不动
+
+在册区间用例全部通过

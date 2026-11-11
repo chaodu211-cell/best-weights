@@ -166,7 +166,7 @@ RECALL_SIGS = (("固定门槛", "实心红点"), ("自适应门槛", "空心红�
 
 
 def recall_reg(snap, close, A, write):
-    """漏报的预先登记：起算日之后确认的下跌顶，等快照覆盖到顶后 RECALL_POST 日，追加写进 _漏报预登记.csv，
+    """漏报的预先登记：顶的日期在起算日（含）之后的下跌顶，等快照覆盖到顶后 RECALL_POST 日，追加写进 _漏报预登记.csv，
     记下快照里顶前窗口内实心 / 空心红点亮没亮；再按事先定好的标准评判。
 
     红点只认快照（当时页面上显示的），不用重算值；只追加、不改写。write=True 只在 GitHub 每日流水线
@@ -221,6 +221,109 @@ def recall_reg(snap, close, A, write):
     return {"from": A.RECALL_FROM, "min": A.RECALL_MIN, "p_cut": A.RECALL_P, "dd": A.RECALL_DD,
             "look": A.RECALL_LOOK, "hi": A.RECALL_HI, "pre": A.RECALL_PRE, "post": A.RECALL_POST,
             "rows": out_rows, "judge": judge}
+
+
+# —— 二次顶预登记（2026-11-11 冻结）：进入/首次触发各追加一行，本地只读 ——
+RETEST_CSV = os.path.join(BASE, "_二次顶预登记.csv")
+RETEST_COLS = ["事件", "参考顶", "确认日", "进入日", "事件日", "实心红点", "空心红点",
+               "重回前最深回撤", "事件收盘", "MA50", "登记时间"]
+
+
+def retest_load():
+    return (pd.read_csv(RETEST_CSV, dtype=str).fillna("") if os.path.exists(RETEST_CSV)
+            else pd.DataFrame(columns=RETEST_COLS))
+
+
+def retest_registered(rows):
+    """已登记日期是当时看到的事实，后续红点重算不抹掉它；不改写CSV。"""
+    saved = []
+    for _, r in rows[rows["事件"] == "进入"].iterrows():
+        triggered = rows[(rows["事件"] == "触发") & (rows["参考顶"] == r["参考顶"])]
+        saved.append({"top": r["参考顶"], "confirm": r["确认日"], "entry": r["进入日"],
+                      "solid": str(r["实心红点"]) == "1", "hollow": str(r["空心红点"]) == "1",
+                      "trigger": None if triggered.empty else triggered.iloc[0]["事件日"]})
+    return saved
+
+
+def retest_reg(state, close, A, write=False, production=True):
+    """仅ALT_SNAPSHOT=1的每日流水线追加；起算日按进入日，旧轮次的后续触发不纳入。
+
+    与旧登记一样，45个自然日内的参考顶视为同一轮（防顶日期修订）；进入/触发分别去重。
+    只追加进入和首次触发，63日结果在展示时按同一版复权收盘计算，不回填CSV。
+    """
+    old = retest_load() if production else pd.DataFrame(columns=RETEST_COLS)
+    rows = old.to_dict("records")
+    c = close.dropna()
+    ma = c.rolling(A.RETEST_MA, min_periods=A.RETEST_MA).mean()
+    pending = []
+    now = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+    for period in state["periods"]:
+        if period["entry"] < A.RETEST_FROM:
+            continue
+        same = [r for r in rows if r["事件"] == "进入" and
+                abs((pd.Timestamp(r["参考顶"]) - pd.Timestamp(period["top"])).days) <= 45]
+        anchor = same[0] if same else None
+        for event, when in (("进入", period["entry"]), ("触发", period["trigger"])):
+            if when is None:
+                continue
+            top = anchor["参考顶"] if anchor else period["top"]
+            if any(r["事件"] == event and r["参考顶"] == top for r in rows):
+                continue
+            t = pd.Timestamp(when)
+            record = {"事件": event, "参考顶": top,
+                      "确认日": anchor["确认日"] if anchor else period["confirm"],
+                      "进入日": anchor["进入日"] if anchor else period["entry"], "事件日": when,
+                      "实心红点": int(period["solid"]), "空心红点": int(period["hollow"]),
+                      "重回前最深回撤": period["depth"], "事件收盘": float(c.loc[t]),
+                      "MA50": None if pd.isna(ma.loc[t]) else float(ma.loc[t]), "登记时间": now}
+            pending.append(record)
+            rows.append(record)
+            if event == "进入":
+                anchor = record
+    # 双重闸门：调用者与环境都授权写入，--raw等非生产数据的调用方永远传False。
+    if production and write and os.environ.get("ALT_SNAPSHOT") == "1":
+        if not os.path.exists(RETEST_CSV):
+            pd.DataFrame(columns=RETEST_COLS).to_csv(RETEST_CSV, index=False, encoding="utf-8")
+        if pending:
+            pd.DataFrame(pending, columns=RETEST_COLS).to_csv(RETEST_CSV, mode="a", header=False, index=False, encoding="utf-8")
+            print(f"  二次顶登记：新增 {len(pending)} 行 → {os.path.basename(RETEST_CSV)}")
+    else:
+        rows = old.to_dict("records")
+    triggers = [pd.Timestamp(r["事件日"]) for r in rows if r["事件"] == "触发"]
+    out = []
+    for r in rows:
+        item = {"event": r["事件"], "top": r["参考顶"], "entry": r["进入日"],
+                "date": r["事件日"], "logged": r["登记时间"], "fwd": None, "low": None}
+        if r["事件"] == "触发":
+            i = c.index.get_loc(pd.Timestamp(r["事件日"]))
+            if i + A.RETEST_FWD < len(c):
+                path = c.iloc[i:i + A.RETEST_FWD + 1]
+                item.update(fwd=float(path.iloc[-1] / path.iloc[0] - 1),
+                            low=float(path.min() / path.iloc[0] - 1))
+        out.append(item)
+    return {"from": A.RETEST_FROM, "min": A.RETEST_MIN, "p_cut": A.RETEST_P,
+            "fwd": A.RETEST_FWD, "draws": A.RETEST_DRAWS, "seed": A.RETEST_SEED,
+            "rows": out, "judge": A.retest_judge(triggers, c)}
+
+
+def retest_payload(close, V, dates, A, snap=None, production=True):
+    """历史按生产红点；快照覆盖的日期优先认当时显示的红点。新字段整块独立下发。"""
+    hot, hot_ad = V["hot"].copy(), V["hot_ad"].copy()
+    if snap is not None:
+        for flag, col in ((hot, "实心红点"), (hot_ad, "空心红点")):
+            known = pd.to_numeric(snap[col], errors="coerce").dropna()
+            ix = flag.index.intersection(known.index)
+            flag.loc[ix] = known.reindex(ix).astype(bool)
+    saved = retest_registered(retest_load()) if production else []
+    state = A.retest_state(close, hot, hot_ad, registered=saved)
+    payload = {"frozen": "2026-11-11", "entry_days": A.RETEST_ENTRY_DAYS, "extra_days": A.RETEST_EXTRA_DAYS,
+               "dd_limit": A.RETEST_DD_LIMIT, "breakout": A.RETEST_BREAKOUT, "dd": A.RETEST_DD,
+               "ma": A.RETEST_MA, "periods": state["periods"],
+               "current": [r for r in state["periods"] if r["end"] is None],
+               "latest": state["periods"][-1] if state["periods"] else None,
+               "series": {"observing": state["observing"].reindex(dates).fillna(False).astype(bool).tolist(),
+                          "trigger": state["trigger"].reindex(dates).fillna(False).astype(bool).tolist()}}
+    return payload, state
 
 
 # —— 每日信号快照（2026-09-30 加）——
@@ -453,6 +556,10 @@ def patch(d, E, A, log=False):
         "ic_hist": [{"m": f"{t:%Y-%m}", "v": round(float(v), 3)} for t, v in icm.items()],
         "prereg": prereg(V, temp_alt, A, log),
     }
+    # 二次顶只加独立子树，既不改alerts也不改变红蓝黄点的统计。
+    retest_close = tgt["close"].loc[:d["as_of"]]
+    d["validity"]["retest"], _ = retest_payload(retest_close, V, dates, A,
+                                               snap=snap_load() if log else None, production=log)
     # —— 热端表现（2026-10-01 起替代网页上的滚动 IC）：来历见 alt_engine 的 HOT_* 注释 ——
     HE = A.hot_end(temp_alt, tgt["close"].reindex(temp_alt.index))
     if len(HE):   # 2026-10-07 起网页不再画热端表现走势图，只下发最新一期给数字卡片
@@ -661,6 +768,10 @@ def main():
                                                  write=os.environ.get("ALT_SNAPSHOT") == "1")
         except Exception as exc:
             print(f"  ! 漏报登记未计算：{exc}")
+    # 与快照同一写入方；本地与--raw只读。状态在patch中算好，截止日快照与当日重算相同。
+    rt = d["validity"]["retest"]
+    rt["registry"] = retest_reg({"periods": rt["periods"]}, E.load(TARGET)["close"].loc[:d["as_of"]], A,
+                                write=a.raw is None and os.environ.get("ALT_SNAPSHOT") == "1", production=a.raw is None)
     json.dump(d, open(out_json, "w", encoding="utf-8"), ensure_ascii=False)
 
     tpl = open(os.path.join(BASE, "alt_tpl.html"), encoding="utf-8").read()

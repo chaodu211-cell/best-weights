@@ -505,6 +505,123 @@ def t_members():
 t_members()
 print("\n在册区间用例全部通过" if ok else "\n在册区间用例有失败")
 
+# ---- 二次顶并行状态与预登记（2026-11-11 冻结）----
+def t_retest():
+    import alt_engine as A
+    import make_alt_page as M
+    import os
+    from pathlib import Path
+    import tempfile
+    from unittest.mock import patch
+
+    print("\n16) 二次顶：冻结规则与无前视")
+    cal = pd.bdate_range("2026-01-01", periods=700)
+    v = np.full(len(cal), 91.0)
+    v[:260] = np.linspace(80, 99, 260)
+    v[260], v[261:270] = 100, 99
+    v[270:300] = np.linspace(88, 99, 30)
+    v[300:360], v[360:380] = np.linspace(102, 104, 60), 98
+    px = pd.Series(v, index=cal)
+    red = pd.Series(False, index=cal); red.iloc[260] = True
+    blank = pd.Series(False, index=cal)
+    date = lambda i: f"{cal[i]:%Y-%m-%d}"
+    state = A.retest_state(px, blank, red)
+    r = state["periods"][0]
+    chk("二次顶：参考顶/确认/进入/首次触发/结束正确", len(state["periods"]) == 1 and
+        (r["top"], r["confirm"], r["entry"], r["trigger"], r["end"], r["reason"]) ==
+        (date(260), date(270), date(300), date(360), date(380), "二次见顶确认"))
+    chk("二次顶：只记首次触发，结束日收盘后退出", state["trigger"].sum() == 1 and
+        state["observing"].iloc[300:380].all() and not state["observing"].iloc[380:].any())
+    solid = A.retest_state(px, red, blank)["periods"]
+    chk("二次顶：只认实心或空心均可，无红点不进入", len(solid) == 1 and solid[0]["trigger"] == r["trigger"] and
+        not A.retest_state(px, blank, blank)["periods"])
+    # 等号边界与首次重回：15%不准入，之后修复不再重试。
+    deep = px.copy(); deep.iloc[270] = 85
+    chk("二次顶：回撤恰好15%不进入，首次重回不合格不重试", not A.retest_state(deep, red, blank)["periods"])
+    equal = px.copy(); equal.iloc[300] = 100
+    chk("二次顶：平旧顶不算重回", A.retest_state(equal, red, blank)["periods"][0]["entry"] == date(301))
+    breakout = px.copy(); breakout.iloc[330] = 110; breakout.iloc[331] = 111
+    br = A.retest_state(breakout, red, blank)["periods"][0]
+    chk("二次顶：高于旧顶10%才突破，突破后不再触发", br["end"] == date(331) and br["reason"] == "突破" and br["trigger"] is None)
+    together = px.copy(); together.iloc[360:380] = 105; together.iloc[380] = 105 * (1-A.RETEST_DD)
+    tr = A.retest_state(together, red, blank)
+    chk("二次顶：回落恰好11%确认，结束日先触发再结束", tr["periods"][0]["trigger"] == date(380) and
+        tr["periods"][0]["end"] == date(380) and bool(tr["trigger"].iloc[380]) and not tr["observing"].iloc[380])
+    expiry = px.copy(); expiry.iloc[300:] = 99; expiry.iloc[512:] = 102
+    er = A.retest_state(expiry, red, blank)["periods"][0]
+    late = expiry.copy(); late.iloc[512] = 99
+    chk("二次顶：顶后252日可进入，第253日不进入，378日到期", er["entry"] == date(512) and
+        er["end"] == date(638) and er["reason"] == "到期" and not A.retest_state(late, red, blank)["periods"])
+    fast = px.copy(); fast.iloc[261] = 88; fast.iloc[262:] = 102
+    future = blank.copy(); future.iloc[263] = True
+    chk("二次顶：极快重回不偷看顶后5日未来红点", not A.retest_state(fast, future, blank)["periods"])
+    prefix_ok = True
+    for stop in (260, 261, 270, 271, 300, 301, 340, 360, 361, 380, 381, 500, 700):
+        part = A.retest_state(px.iloc[:stop], blank.iloc[:stop], red.iloc[:stop])
+        prefix_ok &= part["observing"].equals(state["observing"].iloc[:stop]) and part["trigger"].equals(state["trigger"].iloc[:stop])
+    changed = px.copy(); changed.iloc[380:] = 1000
+    altered = A.retest_state(changed, red, blank)
+    chk("二次顶：前缀截断及篡改未来价格均不改过去状态/触发", prefix_ok and
+        altered["observing"].iloc[:380].equals(state["observing"].iloc[:380]) and
+        altered["trigger"].iloc[:380].equals(state["trigger"].iloc[:380]))
+    chk("二次顶：空输入返回空状态", not A.retest_state(px.iloc[:0], blank, blank)["periods"])
+
+    print("17) 二次顶：隔离登记与判定")
+    with tempfile.TemporaryDirectory(prefix="retest-unit-") as tmp:
+        path = Path(tmp)/"_二次顶预登记.csv"
+        with patch.object(M, "RETEST_CSV", str(path)), patch.dict(os.environ, {}, clear=False), patch.object(A, "RETEST_FROM", date(300)):
+            os.environ.pop("ALT_SNAPSHOT", None)
+            M.retest_reg(state, px, A, write=True)
+            chk("二次顶：本地即使误传write=True也不创建登记", not path.exists())
+            os.environ["ALT_SNAPSHOT"] = "1"
+            M.retest_reg(state, px, A, write=False)
+            chk("二次顶：非生产write=False在CI环境也不创建登记", not path.exists())
+            before = A.retest_state(px.iloc[:350], red.iloc[:350], blank.iloc[:350])
+            out = M.retest_reg(before, px.iloc[:350], A, write=True)
+            entered = path.read_bytes()
+            chk("二次顶：起算日等于进入日，旧参考顶允许登记", len(out["rows"]) == 1 and out["rows"][0]["event"] == "进入")
+            out = M.retest_reg(state, px, A, write=True)
+            appended = path.read_bytes()
+            chk("二次顶：后续首次触发只追加，原有字节不改写", appended.startswith(entered) and len(out["rows"]) == 2 and out["rows"][1]["event"] == "触发")
+            M.retest_reg(state, px, A, write=True)
+            chk("二次顶：同截止日重跑不重复登记", path.read_bytes() == appended)
+            isolated = M.retest_reg(state, px, A, write=True, production=False)
+            chk("二次顶：非生产数据不混入正式登记，也不能写入", not isolated["rows"] and path.read_bytes() == appended)
+            old = M.retest_load()
+            saved = M.retest_registered(old)
+            locked = A.retest_state(px, blank, blank, registered=saved)
+            chk("二次顶：红点修订后保留已登记进入/首次触发", locked["periods"][0]["entry"] == r["entry"] and locked["periods"][0]["trigger"] == r["trigger"])
+            revised = px.copy(); revised.iloc[350] = 80
+            kept = A.retest_state(revised, blank, blank, registered=saved)
+            chk("二次顶：价格修订提前结束也不抹掉已登记触发", kept["periods"][0]["trigger"] == r["trigger"] and bool(kept["trigger"].loc[cal[360]]))
+            with patch.object(A, "RETEST_FROM", date(301)), patch.object(M, "RETEST_CSV", str(Path(tmp)/"other.csv")):
+                earlier = M.retest_reg(state, px, A, write=True)
+                chk("二次顶：起算日前进入的轮次，起算日后触发仍不登记", not earlier["rows"])
+            shifted = {"periods": [{**r, "top": date(261)}]}
+            M.retest_reg(shifted, px, A, write=True)
+            chk("二次顶：参考顶日期修订不重复登记", path.read_bytes() == appended)
+            # 入口当天就已有触发的补记，仍按进入、触发两条顺序记录。
+            with patch.object(M, "RETEST_CSV", str(Path(tmp)/"catchup.csv")):
+                catchup = M.retest_reg(state, px, A, write=True)
+                chk("二次顶：漏跑可补记进入与触发，结果只评满63日", [x["event"] for x in catchup["rows"]] == ["进入", "触发"] and
+                    catchup["rows"][1]["fwd"] is not None and catchup["rows"][1]["low"] is not None)
+                chk("二次顶：未满63日不评价", A.retest_judge([cal[360]], px.iloc[:400])["n_known"] == 0)
+    with patch.object(A, "RETEST_FROM", date(0)):
+        firsts = list(cal[[300, 320, 340, 360, 380]])
+        j = A.retest_judge(firsts, px)
+        repeat = A.retest_judge(firsts, px)
+        chk("二次顶：满5轮评判，固定随机种子可复现", j == repeat and j["n_known"] == 5 and j["p"] is not None and j["verdict"] in ("通过", "未通过"))
+        flat = pd.Series(100.0, index=cal)
+        jf = A.retest_judge(firsts, flat)
+        chk("二次顶：随机收益平局算不利一边，p=1未通过", jf["p"] == 1 and jf["verdict"] == "未通过")
+        chk("二次顶：不足5轮保持累积中", A.retest_judge(firsts[:4], px)["verdict"] == "累积中")
+    chk("二次顶：起算日与冻结参数固定", (A.RETEST_FROM, A.RETEST_ENTRY_DAYS, A.RETEST_EXTRA_DAYS,
+        A.RETEST_DD_LIMIT, A.RETEST_BREAKOUT, A.RETEST_DD, A.RETEST_MA, A.RETEST_FWD) ==
+        ("2026-11-12", 252, 126, .15, .10, .11, 50, 63))
+
+t_retest()
+print("\n二次顶用例全部通过" if ok else "\n二次顶用例有失败")
+
 # 退出码：任一 chk 失败即非零。CI 靠这个判定成败——
 # 没有它的话，脚本打印一堆 FAIL 仍然 exit 0，workflow 会一路绿灯放行。
 if not ok:

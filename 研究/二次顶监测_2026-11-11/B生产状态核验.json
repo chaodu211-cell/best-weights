@@ -1,0 +1,57 @@
+{
+  "days": 5750,
+  "independent_rounds_equal": true,
+  "independent_daily_states_equal": true,
+  "independent_triggers_equal": true,
+  "prefix_checks": 48,
+  "periods": [
+    {
+      "top": "2012-04-02",
+      "confirm": "2012-06-01",
+      "entry": "2012-08-17",
+      "trigger": "2012-10-09",
+      "end": "2012-11-14",
+      "high_at": "2012-09-19",
+      "solid": false,
+      "hollow": true,
+      "depth": -0.11484521945850457,
+      "reason": "二次见顶确认"
+    },
+    {
+      "top": "2015-07-20",
+      "confirm": "2015-08-24",
+      "entry": "2015-10-28",
+      "trigger": "2015-12-11",
+      "end": "2016-01-13",
+      "high_at": "2015-12-01",
+      "solid": false,
+      "hollow": true,
+      "depth": -0.13929903384359077,
+      "reason": "二次见顶确认"
+    },
+    {
+      "top": "2024-07-10",
+      "confirm": "2024-08-05",
+      "entry": "2024-11-06",
+      "trigger": "2025-01-10",
+      "end": "2025-03-10",
+      "high_at": "2025-02-19",
+      "solid": true,
+      "hollow": true,
+      "depth": -0.13557726729710262,
+      "reason": "二次见顶确认"
+    },
+    {
+      "top": "2026-06-02",
+      "confirm": "2026-07-29",
+      "entry": "2026-09-22",
+      "trigger": "2026-10-16",
+      "end": "2026-11-05",
+      "high_at": "2026-10-06",
+      "solid": true,
+      "hollow": true,
+      "depth": -0.11217705932599453,
+      "reason": "二次见顶确认"
+    }
+  ]
+}

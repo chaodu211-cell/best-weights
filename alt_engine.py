@@ -152,6 +152,20 @@ RECALL_DD, RECALL_LOOK, RECALL_HI = 0.11, 63, 252
 RECALL_PRE, RECALL_POST = 30, 5
 RECALL_MIN, RECALL_P = 5, 0.10
 
+# 二次顶监测（2026-11-11 冻结；独立于红蓝黄点，预登记起算日 2026-11-12）。
+# QQQ复权收盘；参考顶沿用drawdown_tops，顶前30至顶后5交易日亮过任一红点。
+# 确认日之后、顶后252日以内首次收盘重回旧顶，且此前最深回撤严格小于15%才进入。
+# 观察期内首次收盘低于MA50触发；含进入及结束日，每轮只记一次。
+# 结束先到者：收盘严格高于旧顶10%、距观察期最高收盘回落至少11%、顶后378日。
+# 同一天先记触发再结束。参考红点只看当日及以前；未来5日的红点不会提前认定。
+# 预登记只收起算日（含）后新进入的轮次；每轮进入/首次触发各追加一行。
+# 评价沿用红点登记的收益随机对照法，但窗口为本研究冻结的63日；最低收盘跌幅另列。
+RETEST_FROM = "2026-11-12"
+RETEST_ENTRY_DAYS, RETEST_EXTRA_DAYS = 252, 126
+RETEST_DD_LIMIT, RETEST_BREAKOUT, RETEST_DD = .15, .10, .11
+RETEST_MA, RETEST_FWD = 50, 63
+RETEST_MIN, RETEST_P, RETEST_DRAWS, RETEST_SEED = 5, .10, 10000, 20261111
+
 # —— 集中度状态提示：2026-09-28 加，2026-10-12 按用户要求删掉（卡片、conc_state / conc_label、CONC_* 常量）——
 # 它只是页面上的读数说明，不进任何信号：按 TOP2、前2% 原始值的「上升占比」「水平分位」分成趋势上升期 / 高位走平期 /
 # 回落期 / 正常，再配一句怎么读（趋势上升期的高读数「单看意义有限」、正常时「读数可以直接看」等）。
@@ -446,6 +460,118 @@ def recall_window(cal, top):
     """顶前 RECALL_PRE 日至顶后 RECALL_POST 日（交易日历 cal 上数），返回这些日期。"""
     i = cal.get_loc(top)
     return cal[max(0, i - RECALL_PRE): i + RECALL_POST + 1]
+
+
+def retest_state(close, hot, hot_ad, registered=()):
+    """逐日二次顶状态。信号只用截至当天的输入；评价不在本函数内。
+
+    返回JSON可用的periods，以及按完整QQQ日历的observing（收盘后尚在观察）、trigger。
+    registered为已登记轮次的日期/红点记录：当时登记的进入与触发日期优先，防后续红点修订抹掉轮次。
+    价格始终用同一版复权序列，避免未来拆股让旧价格锚与新价格刻度混用。
+    """
+    c = close.dropna()
+    cal, values = c.index, c.to_numpy()
+    observing = pd.Series(False, index=cal)
+    triggered = pd.Series(False, index=cal)
+    if not len(c):
+        return {"periods": [], "observing": observing, "trigger": triggered}
+    solid = hot.reindex(cal).fillna(False).astype(bool).to_numpy()
+    hollow = hot_ad.reindex(cal).fillna(False).astype(bool).to_numpy()
+    ma = c.rolling(RETEST_MA, min_periods=RETEST_MA).mean().to_numpy()
+    # drawdown_tops返回确认日，只在推进到确认日时加入，不能提前使用未来确认的顶。
+    confirmed = {cal.get_loc(q): cal.get_loc(p) for p, q in drawdown_tops(c)}
+    frozen = []
+    for saved in registered:
+        if not all(pd.Timestamp(saved[k]) in cal for k in ("top", "confirm", "entry")):
+            raise ValueError("已登记二次顶的日期缺少QQQ收盘，不能静默丢弃")
+        frozen.append({**saved, **{k: cal.get_loc(pd.Timestamp(saved[k])) for k in ("top", "confirm", "entry")},
+                       "trigger": None if not saved.get("trigger") else cal.get_loc(pd.Timestamp(saved["trigger"]))})
+    seeds = {r["entry"]: [] for r in frozen}
+    for row in frozen:
+        seeds[row["entry"]].append(row)
+    rows = []
+    for today, value in enumerate(values):
+        if today in confirmed:
+            p = confirmed[today]
+            # 日期小幅修订仍由原登记轮次接管，不重复开一轮。
+            if not any(abs((cal[p] - cal[r["top"]]).days) <= 45 for r in frozen):
+                rows.append({"p": p, "q": today, "solid": False, "hollow": False,
+                             "recross": None, "depth": None, "entry": None,
+                             "trigger": None, "end": None, "reason": None, "high": None, "high_at": None,
+                             "saved_trigger": None, "locked": False})
+        for saved in seeds.get(today, []):
+            p = saved["top"]
+            rows.append({"p": p, "q": saved["confirm"], "solid": bool(saved["solid"]),
+                         "hollow": bool(saved["hollow"]), "recross": today,
+                         "depth": float(values[p:today + 1].min() / values[p] - 1),
+                         "entry": today, "trigger": None, "end": None, "reason": None,
+                         "high": value, "high_at": today, "saved_trigger": saved["trigger"], "locked": True})
+        for row in rows:
+            p = row["p"]
+            if not row["locked"]:
+                stop = min(today, p + RECALL_POST)
+                row["solid"] = bool(solid[max(0, p - RECALL_PRE):stop + 1].any())
+                row["hollow"] = bool(hollow[max(0, p - RECALL_PRE):stop + 1].any())
+            if row["recross"] is None and row["q"] < today <= p + RETEST_ENTRY_DAYS and value > values[p]:
+                row["recross"] = today
+                row["depth"] = float(values[p:today + 1].min() / values[p] - 1)
+                if (row["solid"] or row["hollow"]) and row["depth"] > -RETEST_DD_LIMIT:
+                    row["entry"], row["high"], row["high_at"] = today, value, today
+            if row["entry"] is None or row["end"] is not None:
+                continue
+            if value > row["high"]:
+                row["high"], row["high_at"] = value, today
+            # 已登记触发优先；未登记的轮次仍只取第一次低于均线。
+            fire = (today == row["saved_trigger"] if row["saved_trigger"] is not None else value < ma[today])
+            if row["trigger"] is None and fire:
+                row["trigger"] = today
+                triggered.iloc[today] = True
+            if value > values[p] * (1 + RETEST_BREAKOUT):
+                row["reason"] = "突破"
+            elif value <= row["high"] * (1 - RETEST_DD):
+                row["reason"] = "二次见顶确认"
+            elif today >= p + RETEST_ENTRY_DAYS + RETEST_EXTRA_DAYS:
+                row["reason"] = "到期"
+            if row["reason"]:
+                row["end"] = today
+        observing.iloc[today] = any(r["entry"] is not None and r["end"] is None for r in rows)
+    # 已登记触发不因后续价格修订改变结束日而从图上消失；日期是不可改写的记录。
+    for row in rows:
+        if row["saved_trigger"] is not None:
+            row["trigger"] = row["saved_trigger"]
+            triggered.iloc[row["saved_trigger"]] = True
+    day = lambda i: None if i is None else f"{cal[i]:%Y-%m-%d}"
+    periods = []
+    for row in rows:
+        if row["entry"] is None:
+            continue
+        periods.append({"top": day(row["p"]), "confirm": day(row["q"]),
+                        **{k: day(row[k]) for k in ("entry", "trigger", "end", "high_at")},
+                        "solid": row["solid"], "hollow": row["hollow"], "depth": row["depth"],
+                        "reason": row["reason"]})
+    periods.sort(key=lambda r: (r["entry"], r["top"]))
+    return {"periods": periods, "observing": observing, "trigger": triggered}
+
+
+def retest_judge(firsts, close):
+    """独立预登记：每轮首次触发后63日收益，≥5次后按固定随机对照法评判。
+
+    池为RETEST_FROM（含）后收益已知的所有交易日，无放回抽同样个数，10000次。
+    p=随机均值≤实际均值的比例，p<0.10通过。未满63日不评价，不挑敏感度参数。
+    """
+    c = close.dropna()
+    fwd = c.shift(-RETEST_FWD) / c - 1
+    pool = fwd.loc[RETEST_FROM:].dropna()
+    got = [float(fwd.get(t)) for t in firsts if pd.notna(fwd.get(t, np.nan))]
+    res = {"n": len(firsts), "n_known": len(got), "need": RETEST_MIN,
+           "mean": float(np.mean(got)) if got else None, "base": float(pool.mean()) if len(pool) else None,
+           "p": None, "verdict": "累积中"}
+    if len(got) >= RETEST_MIN and len(pool) > len(got):
+        rng = np.random.default_rng(RETEST_SEED)
+        sims = np.array([rng.choice(pool.to_numpy(), len(got), replace=False).mean() for _ in range(RETEST_DRAWS)])
+        p = float((sims <= np.mean(got)).mean())
+        res.update(p=p, verdict="通过" if p < RETEST_P else "未通过")
+    return res
 
 
 def recall_judge(tops, flag, cal):

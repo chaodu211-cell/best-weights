@@ -1,0 +1,29 @@
+/Users/duchao/Desktop/模型/最优拟合/engine.py:406: FutureWarning: The default fill_method='pad' in DataFrame.pct_change is deprecated and will be removed in a future version. Call ffill before calling pct_change to retain current behavior and silence this warning.
+  eq_ret = px.pct_change().mean(axis=1)              # 等权组合日收益（截面均值）
+/Users/duchao/Desktop/模型/最优拟合/engine.py:406: FutureWarning: The default fill_method='pad' in DataFrame.pct_change is deprecated and will be removed in a future version. Call ffill before calling pct_change to retain current behavior and silence this warning.
+  eq_ret = px.pct_change().mean(axis=1)              # 等权组合日收益（截面均值）
+蓝点温度 63.2 (偏热)  未做方向修正 74.1 (偏热)  截至 2026-11-09
+红点温度 56.6（门槛 75，权重 top2x2 leveragex2 narrowx3 ma20x1 turnoverx1）  蓝点温度(当日口径) 71.2（蓝点门槛 25 且 VIX≥30）
+杠杆温度 49.8（中性，杠杆资金多空比36.3＋杠杆ETF交易强度90.3，252日滚动分位）
+样本 503 成分股 / 11 行业，历史 5460 交易日，温度序列 4862 点
+  换手率                    原始=5367622.0289  分位=26.0  未修正=91.9 [方向修正]
+  TOP2行业成交额占比            原始=57.2962  分位=72.4
+  上涨个股占比                 原始=54.22  分位=71.6
+  个股站上MA20占比             原始=69.8  分位=88.7
+  杠杆资金多空比                原始=69.2531  分位=36.3
+  风险溢价 ERP               原始=-0.9556  分位=83.9 [已反向]
+  杠杆因子·单股杠杆 ETF（2026-09-30 起生效）：今天前 10 只 NVDA,AMD,MU,AAPL,MSFT,AMZN,TSLA,SNDK,META,AVGO，占全部杠杆 ETF 成交额 14.7%；同日旧口径 多空比 36.3 强度 90.3 → 新口径 16.5 / 70.0（113/113 只 ETF 有数据）
+  信号快照：2026-09-29 ~ 2026-11-10 共 31 天（补记 1）  今天重算与快照不一致 0 处
+
+写入 /var/folders/sy/t_9_drhn2hs8g2blbgxjb8z80000gn/T/retest-b-6nppt32e/after/dashboard_alt.html（2749505 字节）与 /var/folders/sy/t_9_drhn2hs8g2blbgxjb8z80000gn/T/retest-b-6nppt32e/after/data_alt.json
+覆盖 2006-01-03 ~ 2026-11-09（5246 个交易日）
+截止日：最优拟合红点温度 56.6（门槛 82.1）  蓝点当日温度 59.8  重估期 否
+基准 后30日 +1.97% / 32%为负
+有效性：自适应门槛 80.3（固定 82.1）  热端表现 -2.32pp（温度≥70 共 57 天，样本止于 2026-09-28）  预先登记 自 2026-09-25：固定门槛 0 次/累积中；自适应门槛 0 次/累积中
+漏报登记 自 2026-10-12：固定门槛 下跌顶 0 个、抓到 0 个/累积中；自适应门槛 下跌顶 0 个、抓到 0 个/累积中
+  hot         75天 / 17段 / 9 事件   后30日 -5.36% / 75%为负 / 最差 -22.9%
+  cold       117天 / 42段 / 11 事件   后30日 +8.82% / 15%为负 / 最差 -18.9%
+  cold_soft   12天 /  4段 / 2 事件   后30日 +0.22% / 67%为负 / 最差 -5.5%
+  tdc         10天 / 10段 / 10 事件   后30日 +4.28% / 30%为负 / 最差 -7.6%
+  hot_ad     180天 / 44段 / 16 事件   后30日 -1.05% / 47%为负 / 最差 -22.9%
+{"equal": true, "added_paths": ["validity.retest"], "days": 5246, "all_existing_fields_equal": true, "generated_at_compared": true}

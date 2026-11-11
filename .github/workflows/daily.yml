@@ -35,7 +35,7 @@ on:
         default: false
 
 permissions:
-  contents: write   # 只用来提交 _信号快照.csv（每个交易日一行）、_红点预登记.csv 与 _漏报预登记.csv（有新登记时）、hist/（约每月一个文件）
+  contents: write   # 只用来提交 _信号快照.csv（每个交易日一行）、_红点预登记.csv、_漏报预登记.csv 与 _二次顶预登记.csv（有新登记时）、hist/（约每月一个文件）
   pages: write
   id-token: write
 
@@ -191,11 +191,12 @@ jobs:
       # 信号快照、预先登记表、hist/ 长历史存档都「只追加、不改写」，必须跨运行保存。
       # 快照每个交易日一行（同一截止日重跑不追加），预先登记只在有新红点事件时才有新行，
       # 漏报登记只在有新确认的下跌顶、且快照已覆盖到顶后 5 日时才有新行（只由这里写，本地只读），
+      # 二次顶登记只在2026-11-12起新进入的观察期及其首次触发时各追加一行（同由ALT_SNAPSHOT=1写），
       # hist/ 大约每月多一个月份文件（数据源 10 年窗口快滑过去的那个月，见 hist_store.py）。
       # 推送失败会让本次运行标红；页面发布不受影响（deploy 不依赖这一步）。
       - name: 保存信号快照、预先登记表与长历史存档
         run: |
-          for F in "_信号快照.csv" "_红点预登记.csv" "_漏报预登记.csv" "hist" "single_lev_etfs.json" "members.json"; do
+          for F in "_信号快照.csv" "_红点预登记.csv" "_漏报预登记.csv" "_二次顶预登记.csv" "hist" "single_lev_etfs.json" "members.json"; do
             [ -e "$F" ] && git add -- "$F"
           done
           if git diff --cached --quiet; then
@@ -205,6 +206,7 @@ jobs:
           MSG="信号快照：$(python3 -c 'import json;print(json.load(open("data_alt.json",encoding="utf-8"))["as_of"])')"
           git diff --cached --quiet -- "_红点预登记.csv" || MSG="$MSG；预先登记：新增红点事件"
           git diff --cached --quiet -- "_漏报预登记.csv" || MSG="$MSG；漏报登记：新增下跌顶"
+          git diff --cached --quiet -- "_二次顶预登记.csv" || MSG="$MSG；二次顶登记：新增进入或触发"
           git diff --cached --quiet -- "hist" || MSG="$MSG；hist/ 新存档月份"
           git diff --cached --quiet -- "single_lev_etfs.json" || MSG="$MSG；单股杠杆 ETF 对照表更新"
           # 成分股在册区间台账（members.py）：名单有调整时才变，必须跨运行保存——纳入日 / 剔除日只在发生那天记得下来

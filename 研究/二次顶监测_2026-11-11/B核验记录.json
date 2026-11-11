@@ -1,0 +1,143 @@
+{
+  "work": "/var/folders/sy/t_9_drhn2hs8g2blbgxjb8z80000gn/T/retest-b-6nppt32e",
+  "generated_at": "2026-11-11T13:03:24Z",
+  "protected_before": {
+    "_红点预登记.csv": "ecc8387c6b98763e431ceeb255458171d17bd3c631d8fcce5b8964e40dc1d6d7",
+    "_漏报预登记.csv": "dd69aa86ffb19a467961a1047b1786c3b2ea5447ee0916b7d1ed4e5634d3ee62",
+    "_信号快照.csv": "5ce541492a7e094a29ac550cb826df2dbe76aff67f142ce1f03e59954e169ec3"
+  },
+  "original_outputs": {
+    "data_alt.json": "ee30928b49d4c22b89ed4ba70e94b8497e7f8cb7e5b3f952ffa4884d5413c719",
+    "dashboard_alt.html": "19caaf5970eeb58fdbd4c81acae830f2d8042a0c5091f58979b442cf4c2e7c4d"
+  },
+  "sources_before": {
+    "engine.py": "b831a466feab196238317946dc5eb74f52feb2b8ded21f3d1e82cc51233eea24",
+    "alt_engine.py": "85a04efd78866ec0b765c8af3884e848c6240f9530b040120b4f24ff7854fe8c",
+    "make_alt_page.py": "b4540c2db9d47fe6b5ae3c9b2796fe4a97988a1c1c25465cbcae0fc5515863c9",
+    "alt_tpl.html": "330eb4de247aa25a45a2eb1af11d0ee410484ab5010b9f6ef9e1d41b893f74d1",
+    "说明.md": "91ab433d388ab408d5fd51658cc5298990840871215d321cb2da3d39eae9797c",
+    "test_engine.py": "a0344cc0356e4280c20301eb3d62bb7f87ee24ceadc2131d13d0499ca9017b7a",
+    ".github/workflows/daily.yml": "65b54ad059c97fca415a86bd5c9c2b600b67fe0c77d139a9c618bd8f2a9f7821"
+  },
+  "before": {
+    "sha256": "1038926ea9558445615089123423fc78ce3fd9af45895c995c4a19c26f0cacd9",
+    "as_of": "2026-11-09",
+    "days": 5246
+  },
+  "after": {
+    "sha256": "022da094754200f73dc3583813cad87e05f2854a66af72905b782ba6530ddf80",
+    "as_of": "2026-11-09",
+    "days": 5246
+  },
+  "comparison": {
+    "equal": true,
+    "added_paths": [
+      "validity.retest"
+    ],
+    "days": 5246,
+    "all_existing_fields_equal": true,
+    "generated_at_compared": true
+  },
+  "retest": {
+    "periods": [
+      {
+        "top": "2012-04-02",
+        "confirm": "2012-06-01",
+        "entry": "2012-08-17",
+        "trigger": "2012-10-09",
+        "end": "2012-11-14",
+        "high_at": "2012-09-19",
+        "solid": false,
+        "hollow": true,
+        "depth": -0.11484521945850457,
+        "reason": "二次见顶确认"
+      },
+      {
+        "top": "2015-07-20",
+        "confirm": "2015-08-24",
+        "entry": "2015-10-28",
+        "trigger": "2015-12-11",
+        "end": "2016-01-13",
+        "high_at": "2015-12-01",
+        "solid": false,
+        "hollow": true,
+        "depth": -0.13929903384359077,
+        "reason": "二次见顶确认"
+      },
+      {
+        "top": "2024-07-10",
+        "confirm": "2024-08-05",
+        "entry": "2024-11-06",
+        "trigger": "2025-01-10",
+        "end": "2025-03-10",
+        "high_at": "2025-02-19",
+        "solid": true,
+        "hollow": true,
+        "depth": -0.13557726729710262,
+        "reason": "二次见顶确认"
+      },
+      {
+        "top": "2026-06-02",
+        "confirm": "2026-07-29",
+        "entry": "2026-09-22",
+        "trigger": "2026-10-16",
+        "end": "2026-11-05",
+        "high_at": "2026-10-06",
+        "solid": true,
+        "hollow": true,
+        "depth": -0.11217705932599464,
+        "reason": "二次见顶确认"
+      }
+    ],
+    "current": [],
+    "trigger_days": [
+      "2012-10-09",
+      "2015-12-11",
+      "2025-01-10",
+      "2026-10-16"
+    ]
+  },
+  "protected_after": {
+    "_红点预登记.csv": "ecc8387c6b98763e431ceeb255458171d17bd3c631d8fcce5b8964e40dc1d6d7",
+    "_漏报预登记.csv": "dd69aa86ffb19a467961a1047b1786c3b2ea5447ee0916b7d1ed4e5634d3ee62",
+    "_信号快照.csv": "5ce541492a7e094a29ac550cb826df2dbe76aff67f142ce1f03e59954e169ec3"
+  },
+  "outputs_after": {
+    "data_alt.json": "022da094754200f73dc3583813cad87e05f2854a66af72905b782ba6530ddf80",
+    "dashboard_alt.html": "5ac9c83313da8c3163973246b9f8c861b92e9da4c05589befb971a89f7be99da"
+  },
+  "tests": {
+    "command": "python3 test_engine.py",
+    "exit_code": 0,
+    "passes": 141,
+    "failures": 0,
+    "new_passes": 27,
+    "log": "test_engine_B.log"
+  },
+  "source_checks": {
+    "engine_sha256_unchanged": true,
+    "all_existing_alt_engine_functions_unchanged": true,
+    "all_existing_alt_engine_constants_unchanged": true,
+    "new_registry_not_written_locally": true,
+    "final_html_matches_template": true
+  },
+  "sources_after": {
+    "engine.py": "b831a466feab196238317946dc5eb74f52feb2b8ded21f3d1e82cc51233eea24",
+    "alt_engine.py": "3f7348e6a063ff5efac13d94d75e06d493e01e2e4b401974e98e205c55768542",
+    "make_alt_page.py": "4bd64629b73f4c2d00412b31bdd19010861d1915fdeffd68ddb92ae70bd46035",
+    "alt_tpl.html": "fd4eddeda423b9182d2dcc43b85ce8d53b7892a0e54aac657c92c87f349a1ef1",
+    "说明.md": "05f53c2082b3e2ac482f0beff578061bc019d5f4089e9f7929b97b26b5f50691",
+    "test_engine.py": "4db2609c888c39d6b60231df66052afa489e2adf5e84f480460e560cdcd27b5e",
+    ".github/workflows/daily.yml": "1fd63701957489dc62e66fff8a56ac9bff8d8a53af0768b7743e99d9f0f6f2ed"
+  },
+  "frontend": {
+    "command": "node 研究/二次顶监测_2026-11-11/verify_page_b.js",
+    "syntax": true,
+    "dom_simulation": true,
+    "markers_all": 4,
+    "markers_out": 2,
+    "markers_in": 2,
+    "real_browser": false,
+    "browser_blocker": "CUA返回Native apps service startup failed和browser access host unavailable，未做真实浏览器目视核验"
+  }
+}
