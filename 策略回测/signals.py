@@ -15,7 +15,7 @@ import numpy as np, pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
-CACHE = os.path.join(HERE, "_signals.csv")
+PROD_FROM = "2017-10-18"
 
 
 def prod():
@@ -28,33 +28,66 @@ def prod():
         "red_ad": col(f["hot_ad"]).astype(bool), "temp_blue": col(s["temperature_fast"]),
         "blue": col(f["cold"]).astype(bool), "blue_soft": col(f["cold_soft"]).astype(bool),
         "tdc": col(s["tdc"]), "yellow": col(f["tdc"]).astype(bool), "vix": col(s["vix"]),
-        "repricing": col(s["repricing"]).fillna(0).astype(bool)})
+        "repricing": col(s["repricing"]).fillna(0).astype(bool)}).loc[PROD_FROM:]
 
 
 def long():
+    """从只读长面板重算，因子与旗标沿用最优拟合生产入口的规则。"""
     import engine as E, alt_engine as A
-    E.RAW = os.path.expanduser("~/us2/raw_long")
-    X = pd.read_csv(os.path.join(ROOT, "_long_factors.csv"), index_col=0, parse_dates=True)
-    R = pd.read_csv(os.path.join(ROOT, "_window_raw.csv"), index_col=0, parse_dates=True)
-    idx = X.index
-    temp = X["temp"]
-    V = A.validity(temp, R["qqq"].reindex(idx))
-    pct = lambda c: E.rolling_pct(R[c], window=252, min_periods=252)
-    bt = (pct("top2") + pct("ma20") + pct("lev_ratio_d") + (100 - pct("erp"))) / 4
-    vix = R["vix"].reindex(idx)
-    cold = ((bt < A.BLUE_TH) & (vix >= E.VIX_COLD)).fillna(False)
-    rp = E.repricing_regime(E.load_real_rate(), E.load_nominal_rate())
-    rp = E.align_to(rp.astype(float), idx).fillna(0).astype(bool)
     import tdc_signal as TD
-    _read = TD._read
-    TD._read = lambda raw, sym: (lambda x: None if x is None else x[~x.index.duplicated(keep="last")])(_read(raw, sym))
-    T = TD.compute(E.RAW)                    # 长面板个别 CSV 有重复日期，去重后再算
-    TD._read = _read
-    return pd.DataFrame({
-        "temp_red": temp, "red": V["hot"], "red_ad": V["hot_ad"], "temp_blue": bt,
-        "blue": cold & ~rp, "blue_soft": cold & rp,
-        "tdc": T["tdc"].reindex(idx), "yellow": T["red"].reindex(idx).fillna(False).astype(bool),
-        "vix": vix, "repricing": rp})
+    saved_raw = E.RAW
+    try:
+        E.RAW = os.path.expanduser("~/us2/raw_long")
+        # 旧因子缓存早于在册区间口径，每次都从行情重算。
+        rawdf, _, spy, _ = E.build_indicators()
+        idx = rawdf.index
+        dirs = E.direction(spy, idx)
+        _, adj, _, _ = E.compose(rawdf, dirs)
+        lev_pct, _ = E.leverage_monitor(rawdf)
+        lev_pct, _, lev_raw = A.lev_single(idx, lev_pct)
+        temp = A.alt_temperature(A.alt_inputs(rawdf, adj, lev_pct, spy, idx))
+        if temp is None:
+            raise ValueError("长面板红点温度算不出来，检查因子输入")
+        V = A.validity(temp, E.load("QQQ")["close"].reindex(idx))
+
+        fast = rawdf.copy()
+        for key, daily in {"turnover": "_turnover_daily", "advancing": "_advancing_daily",
+                           "leverage": "_leverage_daily"}.items():
+            fast[key] = rawdf[daily]
+        _, adjf, _, _ = E.compose(fast, dirs, fast=True)
+        if lev_raw is not None:
+            adjf = A.blue_lev_splice(adjf, dirs, lev_raw["ratio_daily"], fast=True)
+        bt = A.blue_temperature(adjf, judge=True)
+        if bt is None:
+            raise ValueError("长面板蓝点温度算不出来，检查因子输入")
+        vix = E.load_vix(idx)
+        cold = ((bt < A.BLUE_TH) & (vix >= E.VIX_COLD)).fillna(False)
+        if E.PERSIST_COLD > 1:
+            cold = (cold.rolling(E.PERSIST_COLD, min_periods=E.PERSIST_COLD)
+                    .sum() == E.PERSIST_COLD).fillna(False)
+        rp = E.repricing_regime(E.load_real_rate(), E.load_nominal_rate())
+        rp = E.align_to(rp.astype(float), idx).fillna(0).astype(bool)
+
+        original_read = TD._read
+
+        def read_unique(raw, sym):
+            values = original_read(raw, sym)
+            if values is None:
+                return None
+            return values[~values.index.duplicated(keep="last")]
+
+        TD._read = read_unique
+        try:
+            T = TD.compute(E.RAW)            # 长面板个别 CSV 有重复日期，去重后再算
+        finally:
+            TD._read = original_read
+        return pd.DataFrame({
+            "temp_red": temp, "red": V["hot"], "red_ad": V["hot_ad"], "temp_blue": bt,
+            "blue": cold & ~rp, "blue_soft": cold & rp,
+            "tdc": T["tdc"].reindex(idx), "yellow": T["red"].reindex(idx).fillna(False).astype(bool),
+            "vix": vix, "repricing": rp})
+    finally:
+        E.RAW = saved_raw
 
 
 def build():
@@ -68,13 +101,13 @@ def load(source="splice"):
     pp, pl = os.path.join(HERE, "_signals_prod.csv"), os.path.join(HERE, "_signals_long.csv")
     if not (os.path.exists(pp) and os.path.exists(pl)):
         build()
-    P = pd.read_csv(pp, index_col=0, parse_dates=True)
+    P = pd.read_csv(pp, index_col=0, parse_dates=True).loc[PROD_FROM:]
     L = pd.read_csv(pl, index_col=0, parse_dates=True)
     if source == "prod":
         return P
     if source == "long":
         return L
-    return pd.concat([L[L.index < P.index[0]], P])
+    return pd.concat([L[L.index < PROD_FROM], P])
 
 
 if __name__ == "__main__":
