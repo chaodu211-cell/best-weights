@@ -399,8 +399,8 @@ $("meta").innerHTML = [
      蓝点温度 = 四项等权（杠杆多空比/TOP2/站上MA20/ERP 各 25%），蓝点看它的当日不平滑口径。
    主显示是红点温度；拿不到时（历史前段上涨拥挤度还没预热完）退回显示蓝点温度。 */
 const HEROV = D.temperature_sell != null ? D.temperature_sell : D.temperature;
-// 门槛照引擎原值显示（82.5 不能显示成 83），整数门槛不带小数
-const fmtTh = v => String(+v.toFixed(1));
+// 门槛照引擎原值显示，保留标定精度，整数门槛不带小数
+const fmtTh = v => String(v);
 const HEROS = (D.series.temperature_sell && D.series.temperature_sell.some(v => v != null))
   ? D.series.temperature_sell : D.series.temperature;
 const cur = regOf(HEROV);
@@ -418,7 +418,7 @@ const STRUCT = {
   narrow:   {hot: "指数靠大市值公司撑着", hot2: "指数高度依赖大市值公司",
              cold: "大市值公司领涨减弱",   cold2: "中小市值公司反超大市值公司"}
 };
-/* TOP2 行业与前2% 个股讲的是同一件事：资金挤没挤在少数行业和公司里。
+/* TOP2 行业与前10% 个股讲的是同一件事：资金挤没挤在少数行业和公司里。
    一个过线（≥65 / ≤35）、另一个也接近（≥60 / ≤40）就合成一句「行业和公司」，否则各说各的。 */
 const CROWD = {top2: "行业", topshare: "公司"};
 const crowdSay = (where, lvl) => ({
@@ -880,7 +880,7 @@ const VV = D.validity || null;
   const R2 = P.rows;
   $("prereg").innerHTML = R2.length ? `<table class="vtab"><tr><th>信号</th><th>首日</th><th>温度</th><th>门槛</th>
       <th>后 ${VV.fwd} 日</th><th>登记时间</th></tr>` +
-    R2.map(r => `<tr><td>${r.sig}</td><td>${r.date}</td><td>${r.temp.toFixed(1)}</td><td>${r.th.toFixed(1)}</td>
+    R2.map(r => `<tr><td>${r.sig}</td><td>${r.date}</td><td>${r.temp.toFixed(1)}</td><td>${fmtTh(r.th)}</td>
       <td>${r.fwd == null ? "未满 " + VV.fwd + " 日" : (r.fwd > 0 ? "+" : "") + r.fwd.toFixed(2) + "%"}</td><td>${r.logged}</td></tr>`).join("") +
     `</table>` : `<p class="sub" style="margin:6px 0 0">起算日 ${P.from} 之后还没有新的红点事件。</p>`;
   if (RC) {
@@ -893,7 +893,7 @@ const VV = D.validity || null;
     $("recall").innerHTML = R3.length ? `<table class="vtab"><tr><th>下跌顶</th><th>确认日</th><th>实心</th><th>空心</th>
         <th>窗口内连 3 日温度最高</th><th>当日固定门槛</th><th>当日自适应门槛</th><th>登记时间</th></tr>` +
       R3.map(r => `<tr><td>${r.top}</td><td>${r.confirm}</td><td>${yn(r.hot)}</td><td>${yn(r.hot_ad)}</td>
-        <td>${f1(r.peak)}</td><td>${f1(r.th)}</td><td>${f1(r.th_ad)}</td><td>${r.logged}</td></tr>`).join("") +
+        <td>${f1(r.peak)}</td><td>${r.th == null ? "--" : fmtTh(r.th)}</td><td>${f1(r.th_ad)}</td><td>${r.logged}</td></tr>`).join("") +
       `</table>` : `<p class="sub" style="margin:6px 0 0">起算日 ${RC.from} 之后还没有确认的下跌顶。</p>`;
   }
   if (RT) {
@@ -1273,7 +1273,7 @@ setRange(RSTART, REND, false);
 /* ---- 分项走势：点分项 → 该分项与纳指同一张图（2026-10-07） ----
    分项画实际读数（左轴，按所选时间段自动缩放），纳指画收盘价（右轴）。两条线量纲不同，只能各用一根纵轴；
    网格线共用，右轴标的是同一条网格线上的纳指价位。
-   最初画的是进温度的 252 日分位，当天改成实际读数：TOP2、前2% 这类当日占比原始值一天动一两个点，
+   最初画的是进温度的 252 日分位，当天改成实际读数：TOP2、前10% 这类当日占比原始值一天动一两个点，
    一年的读数又挤在窄区间里，分位一天能跳二三十分，走势看不出来。分位仍在分项表的迷你图和悬浮读数里。
    时间范围自带一套，第一次打开时取上面纳指图的当前区间，之后各管各的。
    打开时往地址栏写 #f-<key>：链接能直接指到某个分项，手机上按返回键是关弹窗而不是离开页面。 */

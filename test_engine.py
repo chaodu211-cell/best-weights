@@ -260,7 +260,7 @@ def t_narrow_neutral():
 
 
 def t_topshare():
-    """前 CROWD_TOP_FRAC 成交额个股占比：k 的取法、占比算法，以及它不能进任何温度。"""
+    """前 CROWD_TOP_FRAC 成交额个股占比：k 的取法、占比算法及基础温度的接线。"""
     import pandas as pd, numpy as np, engine as E
 
     def share(vols, frac):
@@ -269,17 +269,23 @@ def t_topshare():
         k = max(1, int(np.ceil(frac * len(v))))
         return v[:k].sum() / v.sum() * 100.0
 
-    # k = ceil(frac * 当日有效样本数)：100 只、2% -> 前 2 只
+    # k = ceil(frac * 当日有效样本数)：100 只、10% -> 前 10 只
+    frac = E.CROWD_TOP_FRAC
+    chk("个股成交额分项采用前10%", frac == 0.10)
     vols = list(range(1, 101))
-    chk("k = ceil(frac × 有效样本数)", abs(share(vols, 0.02) - (100 + 99) / sum(vols) * 100) < 1e-9)
+    expected = sum(vols[-10:]) / sum(vols) * 100
+    chk("k = ceil(frac × 有效样本数)", abs(share(vols, frac) - expected) < 1e-9)
+    vols_101 = list(range(1, 102))
+    expected_101 = sum(vols_101[-11:]) / sum(vols_101) * 100
+    chk("101只的前10%向上取整到11只", abs(share(vols_101, frac) - expected_101) < 1e-9)
     # 不足一只时向上取整到 1
-    chk("样本少时 k 至少为 1", abs(share([5.0, 3.0, 2.0], 0.02) - 50.0) < 1e-9)
+    chk("样本少时 k 至少为 1", abs(share([5.0, 3.0, 2.0], frac) - 50.0) < 1e-9)
     # 只数固定时，越集中占比越高（单调性）
-    flat = share([10.0] * 50, 0.02)
-    conc = share([500.0] + [10.0] * 49, 0.02)
+    flat = share([10.0] * 50, frac)
+    conc = share([500.0] + [10.0] * 49, frac)
     chk("越集中读数越高", conc > flat, f"{flat:.1f} -> {conc:.1f}")
 
-    # 下划线列不得进入六项蓝点温度 —— 这是"只改黑框"的全部安全性所在
+    # 基础引擎跳过下划线列，最优拟合红点由 alt_engine 单独读取
     idx = pd.date_range("2024-01-01", periods=400, freq="B")
     rng = np.random.default_rng(3)
     raw = pd.DataFrame({k: rng.normal(size=400).cumsum() for k in E.ORDER}, index=idx)
@@ -289,7 +295,7 @@ def t_topshare():
     base = E.compose(raw.drop(columns=["_topshare"]))[3]
     chk("_topshare 存在与否不改变蓝点温度", np.allclose(temp_adj.values, base.values, equal_nan=True))
     # 红点温度同理：SELL_W 里没有它
-    chk("红点温度权重表不含 topshare", "topshare" not in E.SELL_W and "_topshare" not in E.SELL_W)
+    chk("基础红点温度权重表不含 topshare", "topshare" not in E.SELL_W and "_topshare" not in E.SELL_W)
     chk("黑框抱团门槛与上涨拥挤度门槛是两把尺子（分位 vs 评分）",
         E.CROWD_TOP_FRAC > 0 and 0 < E.CROWD_TOP2 <= 100)
 
@@ -338,7 +344,7 @@ def t_alert_wiring():
                            narrow=nr, ndx=px)["crowd"].any())
     chk("黑框：拿不到上涨拥挤度时不触发",
         not E.build_alerts(calm, pd.DataFrame(index=idx), crowd_pct=cp, ndx=px)["crowd"].any())
-    # 抱团闸门优先读 topshare（前 2% 个股成交额占比），取不到才退回 top2。
+    # 抱团闸门优先读 topshare（前 CROWD_TOP_FRAC 个股成交额占比），取不到才退回 top2。
     # 两列给相反的值，看哪一列说了算。
     both_hi = pd.DataFrame({"top2":      pd.Series(E.CROWD_TOP2 - 1, index=idx),
                             "topshare":  pd.Series(E.CROWD_TOP2 + 1, index=idx)})
@@ -621,6 +627,57 @@ def t_retest():
 
 t_retest()
 print("\n二次顶用例全部通过" if ok else "\n二次顶用例有失败")
+
+
+def t_threshold_precision():
+    import alt_engine as A
+    import make_alt_page as M
+    from pathlib import Path
+    import tempfile
+    from unittest.mock import patch
+
+    print("\n18) 红点门槛精度与历史登记")
+    cal = pd.bdate_range("2026-09-25", periods=80)
+    temp = pd.Series(90.0, index=cal)
+    values = {"hot": pd.Series(False, index=cal), "hot_ad": pd.Series(False, index=cal),
+              "th_ad": pd.Series(81.12345, index=cal), "fwd": pd.Series(np.nan, index=cal)}
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "prereg.csv"
+        path.write_text("信号,首日,温度,门槛,登记时间\n固定门槛,2026-09-25,90.0,82.1,2026-09-25 16:00\n", encoding="utf-8")
+        with patch.object(M, "PREREG_CSV", str(path)), patch.object(A, "ALT_TH", 82.65):
+            original = path.read_bytes()
+            old = M.prereg(values, temp, A, log=True)
+            chk("登记：历史门槛82.1及原有字节保留", path.read_bytes() == original and old["rows"][0]["th"] == 82.1)
+            values["hot"].iloc[60] = True
+            values["hot_ad"].iloc[60] = True
+            out = M.prereg(values, temp, A, log=True)
+            new_rows = out["rows"][1:]
+            chk("登记：新固定门槛完整保留82.65", new_rows[0]["th"] == 82.65 and path.read_bytes().startswith(original))
+            chk("登记：自适应门槛沿用一位小数", new_rows[1]["th"] == 81.1)
+            appended = path.read_bytes()
+            M.prereg(values, temp, A, log=True)
+            chk("登记：新门槛重跑只读已有记录", path.read_bytes() == appended)
+
+        snap = pd.DataFrame({"红点温度": np.arange(len(cal), dtype=float) + 50,
+                             "红点门槛": 82.65, "自适应门槛": 81.1,
+                             "实心红点": 0, "空心红点": 0}, index=cal)
+        close = pd.Series(100.0, index=cal)
+        recall_path = Path(tmp) / "recall.csv"
+        with patch.object(M, "RECALL_CSV", str(recall_path)), \
+                patch.object(A, "drawdown_tops", return_value=[(cal[20], cal[30])]):
+            out = M.recall_reg(snap, close, A, write=True)
+            chk("漏报登记：固定门槛保留快照的82.65", out["rows"][0]["th"] == 82.65)
+            original = recall_path.read_bytes()
+            snap["红点门槛"] = 90.0
+            old = M.recall_reg(snap, close, A, write=True)
+            chk("漏报登记：快照修订不改原门槛或字节", recall_path.read_bytes() == original and old["rows"][0]["th"] == 82.65)
+            with patch.object(M, "RECALL_CSV", str(Path(tmp) / "missing.csv")):
+                snap["红点门槛"] = np.nan
+                missing = M.recall_reg(snap, close, A, write=True)
+                chk("漏报登记：缺失的固定门槛保留为空", missing["rows"][0]["th"] is None)
+
+
+t_threshold_precision()
 
 # 退出码：任一 chk 失败即非零。CI 靠这个判定成败——
 # 没有它的话，脚本打印一堆 FAIL 仍然 exit 0，workflow 会一路绿灯放行。

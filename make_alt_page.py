@@ -9,7 +9,7 @@ oos_check.py 里手抄 pipeline() 的教训（"存在与 main() 走样的风险"
 与生产页面的差别，全部在本文件的 patch() 里：
   · 红点温度换成 alt_engine 的权重（来历与局限见该文件顶部）
   · 黑框预警整条摘掉
-  · 分项里补上 VIX（绝对刻度）与 前2%成交额个股占比
+  · 分项里补上 VIX（绝对刻度）与 前10%成交额个股占比
   · 蓝点、实际利率重估期分级、杠杆面板全部不动
 模板 alt_tpl.html 是 dash_tpl.html 的派生：只删了温度走势那一节，区间滑块挪到纳指图上方。
 
@@ -122,7 +122,9 @@ def prereg(V, temp, A, log):
     old = (pd.read_csv(PREREG_CSV, dtype={"信号": str}, parse_dates=["首日"])
            if os.path.exists(PREREG_CSV) else pd.DataFrame(columns=PREREG_COLS))
     start, now = pd.Timestamp(A.PREREG_FROM), pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
-    sigs = (("固定门槛", V["hot"], lambda t: A.ALT_TH), ("自适应门槛", V["hot_ad"], lambda t: V["th_ad"].get(t)))
+    # 固定门槛保留标定精度，自适应门槛沿用一位小数的登记格式。
+    sigs = (("固定门槛", V["hot"], lambda t: A.ALT_TH),
+            ("自适应门槛", V["hot_ad"], lambda t: round(float(V["th_ad"].get(t)), 1)))
     new = []
     for key, flag, th in sigs:
         have = pd.to_datetime(old.loc[old["信号"] == key, "首日"])
@@ -133,7 +135,7 @@ def prereg(V, temp, A, log):
             if len(have) and ((have - a).abs() <= pd.Timedelta(days=45)).any():
                 continue
             new.append({"信号": key, "首日": a, "温度": round(float(temp.get(a)), 1),
-                        "门槛": round(float(th(a)), 1), "登记时间": now})
+                        "门槛": float(th(a)), "登记时间": now})
     if log:
         if not os.path.exists(PREREG_CSV):
             pd.DataFrame(columns=PREREG_COLS).to_csv(PREREG_CSV, index=False, encoding="utf-8")
@@ -177,6 +179,7 @@ def recall_reg(snap, close, A, write):
     cal = close.dropna().index
     have = pd.to_datetime(old["下跌顶"])
     t3 = pd.to_numeric(snap["红点温度"], errors="coerce").rolling(A.ALT_PERSIST, min_periods=A.ALT_PERSIST).min()
+    fixed_th = pd.to_numeric(snap["红点门槛"], errors="coerce")
     fnum = lambda v: None if pd.isna(pd.to_numeric(v, errors="coerce")) else round(float(v), 1)
     now = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
     new = []
@@ -196,7 +199,7 @@ def recall_reg(snap, close, A, write):
         k = tw.idxmax() if len(tw) else None
         new.append({"下跌顶": p, "确认日": q, "实心红点": lit["实心红点"], "空心红点": lit["空心红点"],
                     "窗口内连3日温度最高": None if k is None else round(float(tw[k]), 1),
-                    "当日固定门槛": None if k is None else fnum(snap.at[k, "红点门槛"]),
+                    "当日固定门槛": None if k is None or pd.isna(fixed_th.at[k]) else float(fixed_th.at[k]),
                     "当日自适应门槛": None if k is None else fnum(snap.at[k, "自适应门槛"]), "登记时间": now})
     if write:
         if not os.path.exists(RECALL_CSV):
@@ -597,7 +600,7 @@ def patch(d, E, A, log=False):
                 f"（多空比 = 做多杠杆 ETF 成交额 ÷ 杠杆 ETF 总成交额，交易强度 = 杠杆 ETF 总成交额 ÷ SPY、QQQ 成交额，"
                 f"均取 5 日均；杠杆 ETF 含 15 只指数杠杆 ETF 与正股成交额前 {lev_single['top_n'] if lev_single else 10} 只股票的单股杠杆 ETF）<br>"
                 f"<b>TOP2抱团</b> = 成交额最大的两个 GICS 行业占全部成分股成交额的比例<br>"
-                f"<b>前2%成交额占比</b> = 当日成交额最大的前 2% 成分股占全部成交额的比例<br>"
+                f"<b>{A.LABELS['topshare']}</b> = 当日成交额最大的前 {E.CROWD_TOP_FRAC:.0%} 成分股占全部成交额的比例<br>"
                 f"<b>VIX绝对刻度</b> = 100 − 按 VIX {lo:g}/{mid:g}/{hi:g} 对应 0/50/100 分段线性映射（VIX 越低越热）<br>"
                 f"<b>市值加权跑赢等权</b> = (1 + SPY 近 {E.NT_WIN} 日收益) ÷ (1 + {A.EW_SYM} 近 {E.NT_WIN} 日收益) − 1，"
                 f"SPY 近 {E.NT_WIN} 日下跌时记 50")
@@ -647,10 +650,10 @@ def patch(d, E, A, log=False):
          f"红点 {pc['vix_abs']:.0f}%", parts["vix_abs"],
          f"{num(vix_s.iloc[-1])}",
          f"100 − 按锚点 {'/'.join(f'{x:g}' for x in A.VIX_ANCHORS)} 分段线性映射；VIX 越低越热"),
-        ("topshare", "前2%成交额个股占比", "成交额挤进头部多少只",
+        ("topshare", f"前{E.CROWD_TOP_FRAC:.0%}成交额个股占比", "成交额挤进头部多少只",
          f"红点 {pc['topshare']:.0f}%", parts["topshare"],
          f"{num(rawdf['_topshare'].reindex(dates).iloc[-1])}%",
-         f"成交额最大的前 {E.CROWD_TOP_FRAC:.0%} 只成分股占全篮子的比例，252 日滚动分位"),
+         f"成交额最大的前 {E.CROWD_TOP_FRAC:.0%} 成分股占全篮子的比例，252 日滚动分位"),
         ("ma20", "站上MA20占比", "中期趋势宽度", f"蓝点 {bpc['ma20']:.0f}%", adjf["ma20"],
          f"{num(rawdf['ma20'].reindex(dates).iloc[-1])}%", "当日占比"),
         ("erp", "风险溢价 ERP", "估值性价比（反向）", f"蓝点 {bpc['erp']:.0f}%", adjf["erp"],
@@ -693,7 +696,7 @@ def patch(d, E, A, log=False):
         "lev":      [line("多空比（5 日均）", "%", 1, lev_src["ratio"], lev_pct["ratio"]),
                      line("交易强度（5 日均）", "%", 1, lev_src["intensity"], lev_pct["intensity"])],
         "vix_abs":  [line("VIX 收盘", "", 1, vix_s)],
-        "topshare": [line("前2%成交额个股占比", "%", 1, rawdf["_topshare"])],
+        "topshare": [line(f"前{E.CROWD_TOP_FRAC:.0%}成交额个股占比", "%", 1, rawdf["_topshare"])],
         "ma20":     [line("站上MA20占比", "%", 1, rawdf["ma20"])],
         "erp":      [line("ERP（E/P − 10年期美债）", "%", 2, rawdf["erp"])],
         "vix_gate": [line("VIX 收盘", "", 1, vix_s)],

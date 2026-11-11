@@ -203,7 +203,7 @@ def load_stocks():
     """成分股行情，每只只保留它当时在标普 500 里的日子（members.json 的在册区间，2026-11-10 加，来历见 members.py）。
 
     以前直接 load_many(STOCKS)：今天的名单回填全部历史，后来才纳入的股票提前出现在横截面因子里
-    （TOP2、前 2% 成交额占比、站上 MA20、换手率…），名单每调整一次历史读数也整段改写。
+    （TOP2、头部个股成交额占比、站上 MA20、换手率…），名单每调整一次历史读数也整段改写。
     没有 members.json（us2 原样、或只拿到 sectors.json）时与 load_many(STOCKS) 完全相同。
     在册不足 30 个交易日的不进样本，和 load_many 对新上市股票的处理一样。
     """
@@ -340,9 +340,9 @@ def build_indicators():
         raw["_turnover_daily"] = turnover
         raw["turnover"] = turnover.rolling(TO_SMOOTH, min_periods=1).mean()
 
-    # --- 2a. 前 2% 成交额个股占比（只喂黑框的抱团闸门，不进任何温度）---
-    # 以 `_` 开头存进 rawdf —— compose() 会跳过下划线列，所以六项蓝点温度与红点温度
-    # 逐日不受影响。这是有意为之：实测全局替换 top2 会换掉红点温度 22% 的权重
+    # --- 2a. 前 CROWD_TOP_FRAC 成交额个股占比（alt_engine 红点分项及黑框抱团闸门使用）---
+    # 以 `_` 开头存进 rawdf，compose()/compose_sell() 跳过下划线列；alt_engine 单独读取。
+    # 2026-09 黑框换入时实测，全局替换 top2 会换掉基础红点温度 22% 的权重
     # （两条温度相关 0.939、45% 的日子偏移 >3 分），代价是丢掉 2018-08-29/30
     # 与 2021-11-22~24 两段红点（后 63 日 -9.50% 与 -17.40%，后者是全样本最好的一段）。
     # 黑框的判据只读 crowd_pct，与 compose/compose_sell 无交集，故能单独换而不动其余三类信号。
@@ -358,7 +358,7 @@ def build_indicators():
         raw["_topshare"] = pd.Series(
             np.where((cnt >= 20) & (tot > 0), top / np.where(tot > 0, tot, np.nan) * 100.0, np.nan),
             index=idx)
-        meta["_topshare"] = (f"当日成交额最大的前 {CROWD_TOP_FRAC:.0%} 只成分股，"
+        meta["_topshare"] = (f"当日成交额最大的前 {CROWD_TOP_FRAC:.0%} 成分股，"
                              f"占全篮子成交额的比例")
 
     # --- 2. TOP2 行业成交额占比 ---
@@ -819,7 +819,7 @@ NT_TH = 85      # 【当前未被任何规则使用】原橙线预警的阈值�
 # 是全样本最好的信号之一，原黑框一天都没报；2024-12 那次也从 1 天变成 2 天（-10.11%）。
 # 局限没变：2021 泡沫顶与 2022 熊市**仍然一次都不触发**，这条信号依旧只在上涨市成立。
 # 危险窗口（未来 63 日跌幅≥8%）覆盖率前后都是 13/49，没有因为天数变少而漏掉整段。
-CROWD_TOP_FRAC = 0.02  # 黑框抱团闸门：按当日成交额取前 x 比例的个股（k = ceil(x × 当日有效样本数)）
+CROWD_TOP_FRAC = 0.10  # 2026-11-12：红点个股成交额分项改为前 10%，k = ceil(x × 当日有效样本数)
 CROWD_TOP2   = 75  # 黑框：前 CROWD_TOP_FRAC 成交额个股占比的 252 日滚动分位门槛
 CROWD_NARROW = 75  # 黑框：上涨拥挤度门槛（不是分位，是评分本身）
 CROWD_LEV    = 80  # 【当前未被任何规则使用】曾用于黑框的杠杆分位门槛，保留供回退。
@@ -987,7 +987,7 @@ def build_alerts(temp, pct, vix=None, temp_fast=None, crowd_pct=None, ndx=None,
     # 黑框 = 抱团分位 > CROWD_TOP2 且 上涨拥挤度 > CROWD_NARROW。
     # 抱团那一项单独用 252 日滚动分位：扩张窗口"永不遗忘"，2020-21 的极值会把后来的
     # 抱团永久挡在高分位之外——实测扩张口径下 2022 年之后再没触发过，等于失明。
-    # 优先用 topshare（前 2% 个股成交额占比，2026-09 换入，标定见 CROWD_TOP2 上方）；
+    # 优先用 topshare（前 CROWD_TOP_FRAC 个股成交额占比，黑框标定记录见 CROWD_TOP2 上方）；
     # 取不到才退回 top2（行业口径），保证缺 _topshare 时行为与旧版一致而不是整条哑掉。
     top2 = None
     for _k in ("topshare", "top2"):
