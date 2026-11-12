@@ -20,6 +20,7 @@ oos_check.py 里手抄 pipeline() 的教训（"存在与 main() 走样的风险"
 import argparse, json, os, sys
 import numpy as np
 import pandas as pd
+from vix_term import chart_data as vix_term_chart_data
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 H = 30   # 前瞻窗口：2026-09-18 起红点的检验周期改为 30 个交易日（此前仓库各处是 63）
@@ -727,6 +728,7 @@ def main():
     ap.add_argument("--raw", default=None, help="原始数据目录（默认用 engine 的 raw/）")
     ap.add_argument("--out", default="dashboard_alt.html")
     ap.add_argument("--data-out", default="data_alt.json")
+    ap.add_argument("--refresh-vix-term", action="store_true", help="更新 Cboe 月度 VX 期货结算价")
     a = ap.parse_args()
 
     import engine as E
@@ -775,6 +777,8 @@ def main():
     rt = d["validity"]["retest"]
     rt["registry"] = retest_reg({"periods": rt["periods"]}, E.load(TARGET)["close"].loc[:d["as_of"]], A,
                                 write=a.raw is None and os.environ.get("ALT_SNAPSHOT") == "1", production=a.raw is None)
+    d["vix_term_release"] = vix_term_chart_data(d["series"]["dates"], d["alerts"]["flags"]["cold"],
+                                              E.RAW, refresh=a.refresh_vix_term)
     json.dump(d, open(out_json, "w", encoding="utf-8"), ensure_ascii=False)
 
     tpl = open(os.path.join(BASE, "alt_tpl.html"), encoding="utf-8").read()

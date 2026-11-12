@@ -34,7 +34,7 @@ def main():
     run(["fetch_sp500.py"] + (["--incremental"] if fast else []),
         "① 拉取标普500量价 + EPS" + ("（增量）" if fast else "（全量）"))
     run(["fetch_vix_dgs10.py"], "② 刷新 VIX / 10年期美债 / TIPS实际利率")
-    run(["make_alt_page.py"], "③ 重算并渲染 dashboard_alt.html")
+    run(["make_alt_page.py", "--refresh-vix-term"], "③ 重算并渲染 dashboard_alt.html")
 
     print("\n=== ④ 检查新触发预警 ===")
     d = json.load(open(os.path.join(BASE, "data_alt.json"), encoding="utf-8"))

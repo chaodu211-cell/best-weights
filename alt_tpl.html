@@ -66,6 +66,9 @@ svg{display:block}
 .acard em b{font-weight:500;color:var(--ink2)}
 .acard em{display:block;font-style:normal;font-size:11.5px;color:var(--ink3);line-height:1.55}
 .acard u{display:block;text-decoration:none;font-family:var(--mono);font-size:11.5px;color:var(--ink2);margin-top:7px}
+.acard details{margin-top:8px;font-size:11.5px;color:var(--ink2)}
+.acard summary{cursor:pointer}
+.acard details > p{margin:7px 0}
 .mk{width:13px;height:13px;flex:none;border-radius:50%}
 .mk.box{border-radius:2px;border:2px solid}
 .mk.line{width:17px;height:3px;border-radius:2px}
@@ -286,8 +289,6 @@ body:has(#fdlg[open]){overflow:hidden}
     <div class="vtabwrap" id="prereg"></div>
     <p class="sub" id="recall-sub" style="margin-top:14px"></p>
     <div class="vtabwrap" id="recall"></div>
-    <p class="sub" id="retest-sub" style="margin-top:14px"></p>
-    <div class="vtabwrap" id="retest-reg"></div>
   </section>
 
   <section>
@@ -637,6 +638,10 @@ function drawTemp(){
 
 /* ---- 纳斯达克走势 + 预警点位 ---- */
 const AL = D.alerts || {rules:[], flags:{}, counts:{}};
+const RETEST = D.validity?.retest;
+const VIX_RELEASE = D.vix_term_release;
+const VIX_RELEASE_COLOR = "#54DBC2";
+const VIX_RELEASE_NAME = "蓝点后 VIX 期限结构倒挂解除";
 const FAST = D.series.temperature_fast || null;   // 蓝点温度的当日口径（不平滑），蓝点预警据此判定
 const SELLT = D.series.temperature_sell || null;  // 红点温度（加权，含上涨拥挤度），红点预警据此判定
 const NSCORE = D.series.narrow_score || null;     // 上涨拥挤度，黑框预警的分项之一
@@ -733,8 +738,7 @@ function drawNdx(){
       stroke:"#05080C", "stroke-width":1.2, opacity:1})); } });
 
   // 二次顶首次触发：紫色菱形，独立于红蓝黄圆点，稍抬高以免盖住同日原有信号。
-  const retest = D.validity && D.validity.retest;
-  const fr = retest ? retest.series.trigger.slice(A, Bx) : [];
+  const fr = RETEST ? RETEST.series.trigger.slice(A, Bx) : [];
   fr.forEach((on, i) => { if (on && sp[i] != null) {
     const cx = x(i), cy = y(sp[i]) - 10, z = 5;
     const diamond = el("polygon", {points:`${cx},${cy-z} ${cx+z},${cy} ${cx},${cy+z} ${cx-z},${cy}`,
@@ -742,6 +746,20 @@ function drawNdx(){
     const title = el("title", {}); title.textContent = `${D2[i]} 二次顶观察期首次跌破50日线`;
     diamond.appendChild(title); svg.appendChild(diamond);
   } });
+
+  const releaseEvents = D2.map(day => VIX_RELEASE?.events[day]);
+  const releaseText = event => `${VIX_RELEASE_NAME} · 最近实心蓝点 ${event.blue_date}` +
+    ` · 等待 ${event.wait} 个交易日 · S41 ${event.s41.toFixed(2)}`;
+  releaseEvents.forEach((event, i) => {
+    if (!event || sp[i] == null) return;
+    const cx = x(i), cy = y(sp[i]) + 11, z = N2 > 1200 ? 4 : 5;
+    const triangle = el("polygon", {points:`${cx},${cy-z} ${cx-z},${cy+z} ${cx+z},${cy+z}`,
+      fill:VIX_RELEASE_COLOR, stroke:"#05080C", "stroke-width":1, "data-vix-release-date":D2[i]});
+    const title = el("title", {});
+    title.textContent = `${D2[i]} ${releaseText(event)}`;
+    triangle.appendChild(title);
+    svg.appendChild(triangle);
+  });
 
   // hover
   const cross = el("line", {x1:0, x2:0, y1:m.t, y2:m.t+ih, stroke:"#8DA2B8",
@@ -770,6 +788,7 @@ function drawNdx(){
       (LEV && LEV[A+i] != null ? `<br><span style="color:#56687D">杠杆多空比 ${LEV[A+i].toFixed(1)}`
         + (LEVP && LEVP[A+i] != null ? `（分位 ${LEVP[A+i].toFixed(0)}）` : "") + `</span>` : "") +
       (fr[i] ? `<br><span style="color:#B99CFF">◆ 二次顶观察期首次跌破50日线</span>` : "") +
+      (releaseEvents[i] ? `<br><span style="color:${VIX_RELEASE_COLOR}">▲ ${releaseText(releaseEvents[i])}</span>` : "") +
       (hit.length ? "<br>" + hit.map(q => {
         const g = q.mark === "box" ? "▢" : q.mark === "line" ? "▬" : (q.hollow ? "○" : "●");
         return `<span style="color:${q.mark === "box" ? "#C6D3E0" : q.color}">${g} ${q.name}</span>`;
@@ -848,16 +867,12 @@ const VV = D.validity || null;
   const jtxt = k => { const j = J[k]; return `${k} ${j.n_known}/${j.need} · ${j.verdict}` +
     (j.p != null ? `（p = ${j.p.toFixed(3)}）` : ""); };
   const RC = VV.recall || null, RJ = RC ? RC.judge : null;
-  const RT = VV.retest || null;
-  const active = RT ? RT.current : [], recent = RT ? RT.latest : null;
-  const retestDetail = r => `参考顶 ${r.top} · 进入 ${r.entry}<br>` +
-    (r.trigger ? `已触发 ${r.trigger}` : "尚未触发") + (r.end ? ` · ${r.end} ${r.reason}` : "");
   const rtxt = k => { const j = RJ[k]; return `${k} 抓到 ${j.caught == null ? 0 : j.caught} · ${j.verdict}` +
     (j.p != null ? `（随机平移平均 ${j.sim_mean.toFixed(1)} 个，p = ${j.p.toFixed(3)}）` : ""); };
   $("valid-sub").innerHTML = `回答三件事：<b>红点还适不适合当下这个时代</b>（热端表现，慢变量），
     <b>红点亮了之后准不准</b>（预先登记，只看起算日之后的新事件），以及<b>该亮的时候亮没亮</b>
     （漏报登记，只看起算日之后的真实下跌顶，没有顶就不评判）。另加一种<b>自适应门槛</b>的空心红点与实心红点并列，
-    防止温度基数整体漂移后固定门槛整段失声。另列<b>二次顶观察期</b>，跟踪带红点的旧顶重回之后是否首次跌破50日线。`;
+    防止温度基数整体漂移后固定门槛整段失声。`;
   $("vtiles").innerHTML = [
     ["自适应门槛（空心红点）", VV.th_ad_now == null ? "--" : VV.th_ad_now.toFixed(1),
      `固定门槛 ${VV.th_fixed}` + (VV.th_ad_now == null ? "" : ` · 差 ${(VV.th_ad_now - VV.th_fixed).toFixed(1)}`),
@@ -870,9 +885,7 @@ const VV = D.validity || null;
      jtxt("固定门槛") + "<br>" + jtxt("自适应门槛"), false]
   ].concat(RC ? [["漏报登记", `${RJ["固定门槛"].n} / ${RC.min}`, `下跌顶 / 满几个才评判 · 自 ${RC.from} 起`,
      rtxt("固定门槛") + "<br>" + rtxt("自适应门槛"), RJ["固定门槛"].verdict === "未通过"]] : [])
-    .concat(RT ? [["二次顶观察期", active.length ? "观察中" : "未在观察期",
-      active.length ? active.map(retestDetail).join("<br>") : recent ? "最近一轮：" + retestDetail(recent) : "尚无符合规则的观察期",
-      "◆ 紫色菱形标记首次触发 · 独立并行监测", false]] : []).map(([t, b, e1, e2, w]) => `<div class="vtile"><i>${t}</i><b>${b}</b><em>${e1}</em><em class="${w ? "warn" : ""}">${e2}</em></div>`).join("");
+    .map(([t, b, e1, e2, w]) => `<div class="vtile"><i>${t}</i><b>${b}</b><em>${e1}</em><em class="${w ? "warn" : ""}">${e2}</em></div>`).join("");
   $("prereg-sub").innerHTML = `<b>标准（${P.from} 前定好，此后不改）</b>：以事件首日为单位（相隔 ${VV.fwd} 个交易日以内算同一次），
     看之后 ${VV.fwd} 个交易日 QQQ 收益。前瞻收益已可知的事件累计 ≥ ${P.min_events} 次后，把同样个数的日子随机放在起算日之后的交易日里
     抽 ${P.draws.toLocaleString()} 次，随机均值不高于实际均值的比例就是 p；<b>p &lt; ${P.p_cut} 判通过</b>，否则判未通过。
@@ -895,20 +908,6 @@ const VV = D.validity || null;
       R3.map(r => `<tr><td>${r.top}</td><td>${r.confirm}</td><td>${yn(r.hot)}</td><td>${yn(r.hot_ad)}</td>
         <td>${f1(r.peak)}</td><td>${r.th == null ? "--" : fmtTh(r.th)}</td><td>${f1(r.th_ad)}</td><td>${r.logged}</td></tr>`).join("") +
       `</table>` : `<p class="sub" style="margin:6px 0 0">起算日 ${RC.from} 之后还没有确认的下跌顶。</p>`;
-  }
-  if (RT) {
-    const G = RT.registry, j = G.judge;
-    $("retest-sub").innerHTML = `<b>二次顶并行登记</b>（${RT.frozen} 冻结，自 ${G.from} 起新进入的轮次）：
-      带红点的已确认旧顶，确认日之后、顶后 ${RT.entry_days} 个交易日内首次收盘重回，且重回前回撤小于 ${RT.dd_limit*100}%，进入观察。
-      首次收盘低于 ${RT.ma} 日线触发；高于旧顶 ${RT.breakout*100}% 以上、从观察期最高收盘回落至少 ${RT.dd*100}%、或顶后 ${RT.entry_days+RT.extra_days} 日结束。
-      每轮只记首次触发。新登记 ${G.rows.filter(r => r.event === "进入").length} 轮，触发 ${j.n} 次，满 ${G.fwd} 日 ${j.n_known}/${j.need} · <b>${j.verdict}</b>` +
-      (j.p == null ? "。" : `（p = ${j.p.toFixed(3)}）。`) +
-      `看触发后 ${G.fwd} 日QQQ收益，满 ${G.min} 次后与起算日之后的随机日期比较（${G.draws.toLocaleString()} 次，p &lt; ${G.p_cut} 通过）；最低收盘跌幅另列。
-      需要很多年才够数，历史四轮仅供研究。`;
-    const fp = v => v == null ? "未满 " + G.fwd + " 日" : (v > 0 ? "+" : "") + (v*100).toFixed(2) + "%";
-    $("retest-reg").innerHTML = G.rows.length ? `<table class="vtab"><tr><th>事件</th><th>参考顶</th><th>进入日</th><th>事件日</th><th>后 ${G.fwd} 日收益</th><th>后 ${G.fwd} 日最低</th><th>登记时间</th></tr>` +
-      G.rows.map(r => `<tr><td>${r.event}</td><td>${r.top}</td><td>${r.entry}</td><td>${r.date}</td><td>${r.event === "触发" ? fp(r.fwd) : "—"}</td><td>${r.event === "触发" ? fp(r.low) : "—"}</td><td>${r.logged}</td></tr>`).join("") + `</table>` :
-      `<p class="sub" style="margin:6px 0 0">自 ${G.from} 起尚无新进入的观察期。</p>`;
   }
 })();
 
@@ -1031,6 +1030,29 @@ function segments(f){
   $("macrobar").innerHTML = bits.length ? "当前宏观状态：" + bits.join("　|　") : "";
 })();
 
+function retestCard(RT){
+  const G = RT.registry, j = G.judge;
+  const describe = r => `参考顶 ${r.top} · 进入 ${r.entry}<br>` +
+    (r.trigger ? `已触发 ${r.trigger}` : "尚未触发") + (r.end ? ` · ${r.end} ${r.reason}` : "");
+  const status = RT.current.length ? `观察中<br>${RT.current.map(describe).join("<br>")}`
+    : RT.latest ? `未在观察期 · 最近一轮<br>${describe(RT.latest)}` : "尚无符合规则的观察期";
+  const fp = v => v == null ? `未满 ${G.fwd} 日` : (v > 0 ? "+" : "") + (v*100).toFixed(2) + "%";
+  const rows = G.rows.length ? `<table class="vtab"><tr><th>事件</th><th>参考顶</th><th>进入日</th><th>事件日</th><th>后 ${G.fwd} 日收益</th><th>后 ${G.fwd} 日最低</th><th>登记时间</th></tr>` +
+    G.rows.map(r => `<tr><td>${r.event}</td><td>${r.top}</td><td>${r.entry}</td><td>${r.date}</td><td>${r.event === "触发" ? fp(r.fwd) : "—"}</td><td>${r.event === "触发" ? fp(r.low) : "—"}</td><td>${r.logged}</td></tr>`).join("") + `</table>` :
+    `<p class="sub">自 ${G.from} 起尚无新进入的观察期。</p>`;
+  return `<div class="acard" id="retest-card">
+    <b><span style="color:#B99CFF">◆</span>二次顶观察期</b>
+    <em>带红点的已确认旧顶，在确认日之后、顶后 ${RT.entry_days} 个交易日内首次收盘重回，且此前回撤小于 ${RT.dd_limit*100}%，进入观察。
+      首次收盘跌破 ${RT.ma} 日均线时标记紫色菱形，每轮一次。高于旧顶 ${RT.breakout*100}% 以上、从观察期最高收盘回落至少 ${RT.dd*100}%、或到顶后 ${RT.entry_days+RT.extra_days} 日时结束观察。</em>
+    <u>${status}</u>
+    <details><summary>二次顶并行登记</summary>
+      <p>规则于 ${RT.frozen} 冻结，自 ${G.from} 起登记。新登记 ${G.rows.filter(r => r.event === "进入").length} 轮，触发 ${j.n} 次，满 ${G.fwd} 日 ${j.n_known}/${j.need} · <b>${j.verdict}</b>${j.p == null ? "。" : `（p = ${j.p.toFixed(3)}）。`}
+      看触发后 ${G.fwd} 日 QQQ 收益，满 ${G.min} 次后与随机日期比较（${G.draws.toLocaleString()} 次，p &lt; ${G.p_cut} 通过）。最低收盘跌幅另列。历史四轮仅供研究。</p>
+      <div class="vtabwrap">${rows}</div>
+    </details>
+  </div>`;
+}
+
 $("alegend").innerHTML = AL.rules.map(r => {
   const f = AL.flags[r.key] || [], segs = segments(f), last = segs[segs.length-1];
   const cls = r.mark === "box" ? "mk box" : r.mark === "line" ? "mk line"
@@ -1038,12 +1060,12 @@ $("alegend").innerHTML = AL.rules.map(r => {
   const sty = r.mark === "box"
     ? `border-color:#05080C;box-shadow:0 0 0 1.5px rgba(198,211,224,.55);background:#05080C`
     : r.hollow ? `border-color:${r.color}` : `background:${r.color}`;
-  return `<div class="acard">
+  return `<div class="acard" data-rule="${r.key}">
     <b><span class="${cls}" style="${sty}"></span>${r.name}</b>
     <em>${r.desc}</em>
     <u>${AL.counts[r.key] || 0} 个交易日 · ${segs.length} 段${
       last ? `<br>最近 ${D.series.dates[last[0]]}${last[1] > last[0] ? " → " + D.series.dates[last[1]] : ""}` : ""}</u>
-  </div>`;
+  </div>` + (r.key === "hot_ad" && RETEST ? retestCard(RETEST) : "");
 }).join("");
 
 /* ---- legend ---- */
@@ -1265,7 +1287,10 @@ function ndxSub(){
   const A = RSTART;
   const inside = key => {const b = sampleBounds(key);return b && A >= b[0] && REND <= b[1];};
   const sample = inside("in") ? "样本内（参与权重标定）" : inside("out") ? "样本外（2006–2016，沿用现行规则）" : "跨区间历史展示";
-  return `${D.ndx_label || "标的"} 收盘价，叠加同期三类情绪预警的触发点位；◆（紫色菱形）为二次顶观察期首次跌破50日线。` +
+  const vixLegend = VIX_RELEASE ? `<br><span style="color:${VIX_RELEASE_COLOR}">▲</span> ${VIX_RELEASE_NAME}。` +
+    `倒挂期间亮实心蓝点后 126 个交易日内，第 4 月减第 1 月 VX 期货结算价差连续 3 个有效交易日为正时标记。` +
+    (VIX_RELEASE.through ? `结算价截至 ${VIX_RELEASE.through}。` : "") : "";
+  return `${D.ndx_label || "标的"} 收盘价，叠加同期三类情绪预警的触发点位；◆（紫色菱形）为二次顶观察期首次跌破50日线。` + vixLegend + "<br>" +
          `${sample} · 区间 ${D.series.dates[A]} 至 ${D.series.dates[REND]}。`;
 }
 setRange(RSTART, REND, false);
