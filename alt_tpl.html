@@ -389,7 +389,7 @@ const $ = id => document.getElementById(id);
 $("meta").innerHTML = [
   `数据截至 ${D.as_of}`,
   `全样本 ${D.coverage.stocks} 只成分股 · ${D.coverage.sectors} 个GICS行业`,
-  `杠杆ETF ${D.coverage.lev_long}多/${D.coverage.lev_short}空`,
+  `指数杠杆ETF ${D.coverage.lev_long}多/${D.coverage.lev_short}空`,
   `日频 ${D.coverage.history_days} 交易日`,
   `${D.coverage.history_start.slice(0,4)}–${D.coverage.history_end.slice(0,4)}`
 ].map(t => `<span class="chip">${t}</span>`).join("");
@@ -1208,7 +1208,7 @@ if (PANEL){
 $("methods").innerHTML = D.indicators.map(it =>
   `<p><span style="color:var(--ink)">${it.name}</span> — ${it.method}</p>`).join("");
 
-$("foot").innerHTML = `数据源：stockanalysis.com（${D.coverage.stocks} 只成分股 + ${D.coverage.sector_etfs} 个行业ETF + 15 只杠杆ETF 的 10 年日线，已做拆股/分红复权）、` +
+$("foot").innerHTML = `数据源：stockanalysis.com（${D.coverage.stocks} 只成分股、${D.coverage.sector_etfs} 个行业 ETF、${D.coverage.lev_long + D.coverage.lev_short} 只指数杠杆 ETF 以及单股杠杆及反向 ETF 的 10 年日线，已做拆股/分红复权）、` +
   `Wikipedia（成分股名单与 GICS 行业）、Alpha Vantage（10 年期美债日频收益率）、multpl.com（标普500 TTM 每股收益）。` +
   `生成于 ${D.generated_at}（UTC）。` +
   `<br>本页仅为市场情绪的量化观察工具，不构成任何投资建议。`;
@@ -1477,7 +1477,7 @@ function renderFac(){
   $("fdlg-cap").innerHTML = `${it.desc}。${it.sub}。` +
     (fs.pct ? "分位越高＝该维度越热，虚线为 50 分位。"
             : "左轴是<b>实际读数</b>，按所选时间段自动缩放；红点、蓝点用的是它在过去 252 日里的分位（分项表与悬浮读数里）。") +
-    (FKEY === "lev" ? "两条都按现行口径（含单股杠杆 ETF）回算整段；2026-09-30 以前红点实际用的是旧口径（只含 15 只指数杠杆 ETF）的分位。" +
+    (FKEY === "lev" ? "两条都按现行口径（含单股杠杆及反向 ETF）回算整段。2026-09-30 以前，红点分位按纯指数篮子计算。" +
       "悬浮读数里两条各自的分位与合成分位，都是红点实际用的那一版。" : "") +
     (PDAY !== PLAST ? `竖线是「查看某一天」选中的 ${PDATES[PDAY]}。` : "");
   fSync(); drawFac();

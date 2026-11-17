@@ -452,6 +452,38 @@ t_leverage()
 print("\n杠杆温度用例全部通过" if ok else "\n杠杆温度用例有失败")
 
 
+def t_etf_universe():
+    import fetch_sp500 as fetch
+    import single_lev as SL
+
+    chk("指数 ETF：抓取与引擎使用相同的多空清单",
+        (fetch.LEV_LONG, fetch.LEV_SHORT) == (E.LEV_LONG, E.LEV_SHORT))
+    new_shorts = {"QID", "SPXU", "FAZ", "TECS", "SDOW"}
+    chk("指数 ETF：新增的五只反向 ETF 都抓取并计入做空侧",
+        new_shorts <= set(fetch.ETFS) and new_shorts <= set(E.LEV_SHORT))
+    names = {
+        "MSFD": "Direxion Daily MSFT Bear 1X ETF",
+        "MSFU": "Direxion Daily MSFT Bull 2X ETF",
+        "MSFQ": "Tradr 2X Short MSFT Daily ETF",
+        "MSFO": "Direxion Daily MSFT Bull 1X ETF",
+        "PSQ": "Tradr 1X Short QQQ Daily ETF",
+    }
+    providers = "https://stockanalysis.com/etf/provider/"
+    pages = {
+        providers: '<a href="/etf/provider/example/">Issuer</a>',
+        providers + "example/": "".join(
+            f'<tr><td><a href="/etf/{ticker.lower()}/">{ticker}</a></td><td class="slw">{name}</td></tr>'
+            for ticker, name in names.items()
+        ),
+    }
+    chk("单股 ETF：自动发现收录 −1 倍，仍过滤 +1 倍和指数 ETF",
+        SL.discover(pages.__getitem__, {"MSFT"}) ==
+        {"MSFT": {"long": [["MSFU", 2.0]], "short": [["MSFD", -1.0], ["MSFQ", -2.0]]}})
+
+
+t_etf_universe()
+
+
 # ---- 增量合并 ----
 def t_merge():
     import fetch_sp500 as FS

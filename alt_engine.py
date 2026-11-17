@@ -55,7 +55,7 @@ ALT_LEGS = (1.0, 0.0, 0.0)
 EW_SYM = "RSP"
 RAW_HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "raw")
 # 杠杆温度内部：多空比 : 交易强度（leverage.py 锁死的是 3:1，这里按扫描结果取 1:1）
-# 2026-09-30 起两项的原始量并入「正股成交额前十」的单股杠杆 ETF，之前的读数不动——见 lev_single()、single_lev.py；
+# 2026-09-30 起两项的原始量并入「正股成交额前十」的单股杠杆与反向 ETF；
 # 蓝点用的杠杆多空比同日起也换成同一口径（blue_lev_splice）
 LEV_INNER = (1.0, 1.0)
 # 五个格子的权重（归一后 = 拥挤度11% / TOP2 22% / 杠杆33% / VIX 22% / 前10%占比11%）
@@ -193,8 +193,9 @@ LABELS = {"narrow": "市值加权跑赢等权", "top2": "TOP2抱团", "lev": "�
 def lev_single(idx, lev_pct):
     """红点杠杆因子并入「正股成交额前十」的单股杠杆 ETF（2026-09-30 起，规则与来历见 single_lev.py）。
 
-    lev_pct: engine.leverage_monitor 的分位（旧口径，只含 15 只指数杠杆 ETF）。
-    → (拼接后的 lev_pct, 页面用的说明 dict 或 None, 新口径原始量 dict（ratio/ratio_daily/intensity）或 None)。single_lev.FROM 之前的读数原样保留；
+    lev_pct: engine.leverage_monitor 的分位（只含指数杠杆 ETF）。
+    → (拼接后的 lev_pct, 页面用的说明 dict 或 None, 新口径原始量 dict（ratio/ratio_daily/intensity）或 None)。
+    single_lev.FROM 之前用纯指数的分位；
     之后换成新口径的分位——新口径的原始量与它自己同口径的过去 252 日比，不和旧口径混比。
     多空比、交易强度的公式与 leverage.letf_components 完全相同，只是做多/做空两边各加上单股杠杆 ETF 的成交额；
     单股部分为 0 的年份，新旧原始量逐日相同。蓝点的杠杆多空比用返回的原始量另行拼接（blue_lev_splice）。
@@ -243,7 +244,7 @@ def blue_lev_splice(adj_like, dirs, ratio, fast):
 
     adj_like: engine.compose 的方向修正后分位（fast=True 是判定用的当日口径 adjf，False 是展示用的平滑口径 adj）；
     ratio: 对应口径的新多空比原始量（当日值或 5 日均）。分位与方向修正走 engine.compose 同一条路，只换这一列的输入；
-    FROM 之前原样保留。实测（2022-08 单股产品上市以来 31 个 VIX ≥ 30 的日子）：蓝点一天不变，温度差最大 2.3 分。
+    FROM 之前用纯指数的分位。首次并入时的对比（2022-08 起 31 个 VIX ≥ 30 的日子）：蓝点逐日相同，温度差最大 2.3 分。
     """
     import single_lev as SL
     if "leverage" not in adj_like.columns:

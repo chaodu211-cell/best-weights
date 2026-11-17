@@ -6,12 +6,11 @@
 投机杠杆有一部分换到了这些产品上：单股杠杆占全部杠杆 ETF 成交额 2024 年 20%、2025 年 31%；2025 年只看
 指数杠杆时交易强度从 0.26 掉到 0.22，看着像降温，并入后几乎持平（0.33→0.32）。
 
-规则（用户 2026-09-30 定）：
+规则（2026-09-30 起，2026-11-17 扩充反向产品）：
   · 每天按**正股成交额**（未复权收盘 × 成交量）给标普 500 成分股排序，从高到低取前 10 只；
     某只股票当天没有已上市的杠杆 ETF 就顺延到第 11、12…名。同一家公司的多类股（GOOGL/GOOG）只算一次。
-  · 这 10 只股票的全部杠杆 ETF（倍数绝对值 > 1：2x、1.5x、1.25x 做多，2x、1.5x 做空；1 倍反向不算杠杆，
-    与指数篮子不含 SH/PSQ 一致）的成交额，做多的加进多空比与强度的「做多」，做空的加进「做空」。
-  · **FROM 之前的读数一律不动**（仍是只含指数杠杆 ETF 的旧口径）；FROM 起换新口径。新口径的分位与它自己
+  · 这 10 只股票的杠杆和反向 ETF（做多倍率 > 1，做空倍率 ≤ −1）分别计入多空比与强度的两侧。
+  · FROM 之前仍用纯指数篮子；FROM 起计入单股产品。含单股口径的分位与它自己
     同口径的过去 252 日比——不能拿"含单股"的今天去比"不含单股"的过去一年，否则读数会凭空跳到顶。
   · 红点的杠杆因子（多空比 + 交易强度）与蓝点的杠杆多空比（当日口径）同日换成新口径，两处用同一个多空比
     （蓝点最初没换，用户 2026-09-30 当天改为一起换）。
@@ -69,7 +68,7 @@ def discover(get, universe):
             if not r:
                 continue
             u, L = r
-            if u not in universe or abs(L) <= 1:
+            if u not in universe or -1 < L <= 1:
                 continue
             side = m.setdefault(u, {"long": [], "short": []})["long" if L > 0 else "short"]
             if tk.upper() not in [e for e, _ in side]:
@@ -110,7 +109,7 @@ def maybe_refresh(get, universe, force=False):
         return "单股杠杆 ETF 对照表重爬：无变化"
     added = sorted(set(etfs(m)) - set(etfs(old["stocks"]) if old else set()))
     json.dump({"updated": date.today().isoformat(), "source": "stockanalysis.com 发行商页面的基金全称",
-               "rule": "倍数绝对值 > 1 的单股杠杆/反向 ETF；GOOG 并入 GOOGL", "stocks": m},
+               "rule": "单股 ETF 做多倍率 > 1，做空倍率 ≤ −1；GOOG 并入 GOOGL", "stocks": m},
               open(MAP_JSON, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     return f"单股杠杆 ETF 对照表已更新：{len(m)} 只股票、{len(etfs(m))} 只 ETF" + (f"，新增 {added}" if added else "")
 

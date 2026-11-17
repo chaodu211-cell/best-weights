@@ -12,8 +12,9 @@ import pandas as pd
 
 import leverage as LV   # 杠杆温度：研报口径的多层杠杆监测（见 leverage.py 顶部注释）
 
-RAW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "raw")
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
+BASE = os.path.dirname(os.path.abspath(__file__))
+RAW = os.path.join(BASE, "raw")
+OUT = os.path.join(BASE, "data.json")
 
 WINDOW      = 252   # 滚动分位窗口：252 个交易日
 MIN_PERIODS = 252   # 要求完整窗口，不做短窗口近似
@@ -144,9 +145,11 @@ SECTORS = {
 }
 SECTOR_ETFS = {"XLK":"信息技术","XLC":"通信服务","XLY":"可选消费","XLF":"金融","XLV":"医疗保健",
                "XLI":"工业","XLP":"日常消费","XLE":"能源","XLU":"公用事业","XLRE":"房地产","XLB":"原材料"}
-# 杠杆ETF：做多/做空各一篮，覆盖纳指、标普、小盘、半导体、金融、道指
-LEV_LONG  = ["TQQQ","UPRO","SPXL","SSO","QLD","TNA","SOXL","FAS","TECL","UDOW"]
-LEV_SHORT = ["SQQQ","SPXS","SDS","TZA","SOXS"]
+# 指数杠杆 ETF：行情抓取和计算共用同一份清单。
+with open(os.path.join(BASE, "lev_etfs.json"), encoding="utf-8") as f:
+    _lev_etfs = json.load(f)
+LEV_LONG = _lev_etfs["long"]
+LEV_SHORT = _lev_etfs["short"]
 LEV_ETFS  = LEV_LONG + LEV_SHORT
 
 # 若存在 sectors.json（由 fetch_sp500_yahoo.py 生成），优先用它组建全成分股篮子

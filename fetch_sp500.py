@@ -65,10 +65,11 @@ GICS_CN = {
     "Utilities": "公用事业", "Real Estate": "房地产", "Materials": "原材料",
 }
 # 行业ETF（行业成交额集中度）、SPY/QQQ（指数展示/ERP）、
-# 杠杆ETF多空两篮（杠杆资金多空比）——15 只必须全部每日刷新，
-# 少拉任何一只，该分项就会用陈旧数据继续算，且平滑窗口会把缺口悄悄补上。
-LEV_LONG  = ["TQQQ", "UPRO", "SPXL", "SSO", "QLD", "TNA", "SOXL", "FAS", "TECL", "UDOW"]
-LEV_SHORT = ["SQQQ", "SPXS", "SDS", "TZA", "SOXS"]
+# 杠杆资金多空比用到的指数 ETF，每日按引擎使用的同一份清单刷新。
+with open(os.path.join(BASE, "lev_etfs.json"), encoding="utf-8") as f:
+    _lev_etfs = json.load(f)
+LEV_LONG = _lev_etfs["long"]
+LEV_SHORT = _lev_etfs["short"]
 # RSP：最优拟合红点「市值跑赢等权」的等权一侧（2026-10-01 起；2017-03 以前由 hist/RSP_backfill_2004-2017.csv.gz 补回）
 ETFS = (["XLK", "XLC", "XLY", "XLF", "XLV", "XLI", "XLP", "XLE", "XLU", "XLRE", "XLB",
          "SPY", "QQQ", "SOXX", "RSP"] + LEV_LONG + LEV_SHORT)   # SOXX：最优拟合页面的展示与评估标的

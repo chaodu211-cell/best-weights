@@ -429,7 +429,7 @@ def patch(d, E, A, log=False):
     dirs = E.direction(spy, rawdf.index)
     _, adj, _, _ = E.compose(rawdf, dirs)
     lev_pct, _ = E.leverage_monitor(rawdf)
-    # 2026-09-30 起杠杆多空比、交易强度并入正股成交额前十的单股杠杆 ETF（single_lev.py）；之前的读数原样保留。
+    # 2026-09-30 起杠杆因子并入正股成交额前十的单股杠杆及反向 ETF（single_lev.py）。
     # 红点的杠杆因子在这里换；蓝点的多空比在下面 compose 之后用 lev_raw 换（blue_lev_splice）
     lev_pct, lev_single, lev_raw = A.lev_single(rawdf.index, lev_pct)
     # 传 lev_pct 而不是 lev_temp：杠杆温度的内部比例由 alt_engine.LEV_INNER 决定（1:1），
@@ -445,7 +445,7 @@ def patch(d, E, A, log=False):
                  "leverage": "_leverage_daily"}.items():
         rf[k] = rawdf[v]
     _, adjf, _, _ = E.compose(rf, dirs, fast=True)
-    # 蓝点的杠杆多空比也自 2026-09-30 起并入单股杠杆 ETF（判定用当日口径，展示用平滑口径），之前原样保留
+    # 蓝点自 2026-09-30 起也并入单股 ETF，判定用当日口径，展示用平滑口径。
     adj_blue = adj
     if lev_raw is not None:
         adjf = A.blue_lev_splice(adjf, dirs, lev_raw["ratio_daily"], fast=True)
@@ -588,6 +588,10 @@ def patch(d, E, A, log=False):
     btxt = "、".join(f"{A.BLUE_LABELS[k]} {bpc[k]:.0f}%" for k in
                     sorted(A.BLUE_W, key=lambda k: -A.BLUE_W[k]))
     li, lj = A.LEV_INNER
+    n_index = d["coverage"]["lev_long"] + d["coverage"]["lev_short"]
+    lev_scope = f"{n_index} 只指数杠杆 ETF"
+    if lev_single and lev_single["active"]:
+        lev_scope += f"与正股成交额前 {lev_single['top_n']} 只股票的杠杆及反向 ETF（含 −1 倍）"
     for r in d["alerts"]["rules"]:
         if r["key"] == "hot":
             r["name"] = "红点预警（最优拟合）"
@@ -599,7 +603,7 @@ def patch(d, E, A, log=False):
                 f"除 VIX 外，各项都取过去 {E.WINDOW} 个交易日的滚动分位（0~100）：<br>"
                 f"<b>杠杆温度</b> = 多空比分位 × {li / (li + lj):.0%} + 交易强度分位 × {lj / (li + lj):.0%}"
                 f"（多空比 = 做多杠杆 ETF 成交额 ÷ 杠杆 ETF 总成交额，交易强度 = 杠杆 ETF 总成交额 ÷ SPY、QQQ 成交额，"
-                f"均取 5 日均；杠杆 ETF 含 15 只指数杠杆 ETF 与正股成交额前 {lev_single['top_n'] if lev_single else 10} 只股票的单股杠杆 ETF）<br>"
+                f"均取 5 日均；纳入 {lev_scope}）<br>"
                 f"<b>TOP2抱团</b> = 成交额最大的两个 GICS 行业占全部成分股成交额的比例<br>"
                 f"<b>{A.LABELS['topshare']}</b> = 当日成交额最大的前 {E.CROWD_TOP_FRAC:.0%} 成分股占全部成交额的比例<br>"
                 f"<b>VIX绝对刻度</b> = 100 − 按 VIX {lo:g}/{mid:g}/{hi:g} 对应 0/50/100 分段线性映射（VIX 越低越热）<br>"
@@ -643,7 +647,7 @@ def patch(d, E, A, log=False):
          f"多空比 {num(lev_pct['ratio'].reindex(dates).iloc[-1]):.0f} · "
          f"强度 {num(lev_pct['intensity'].reindex(dates).iloc[-1]):.0f}",
          f"两项分位按 {li:g}:{lj:g} 合成；蓝点只用多空比的当日口径"
-         + (f"；{lev_single['from']} 起两项（红点与蓝点）都并入正股成交额前 {lev_single['top_n']} 的单股杠杆 ETF"
+         + (f"；{lev_single['from']} 起并入正股成交额前 {lev_single['top_n']} 的单股杠杆及反向 ETF（含 −1 倍）"
             + (f"（今天：{'、'.join(lev_single['picks'])}，占全部杠杆 ETF 成交额 {lev_single['share']}%）"
                if lev_single["active"] else "")
             if lev_single else "")),
@@ -685,7 +689,7 @@ def patch(d, E, A, log=False):
     # 逐日原始值的数值版：点开分项看的走势图画它（2026-10-07 起，原来画分位——分位把当日占比类因子的
     # 日常波动放大成二三十分的来回跳）。一条线 = {name, unit, dp, v}，杠杆温度没有单一原始值，画多空比与交易强度两条。
     # 杠杆两条用现行口径（含单股杠杆 ETF）回算整段，免得在 2026-09-30 换口径处凭空跳一截；
-    # 那之前红点实际用的是旧口径（只含 15 只指数杠杆 ETF）的分位。
+    # 那之前红点使用纯指数口径的分位。
     # 杠杆两条另带各自的分位 p（2026-10-12 加，就是红点实际用、按 LEV_INNER 合成的那两列），悬浮读数里分别标出。
     nums = lambda s, n: [num(v, n) for v in s.reindex(dates).values]
     line = lambda nm, unit, dp, s, p=None: None if s is None else dict(
